@@ -25,6 +25,6 @@ enum simdDctResult
   sdr_NotSupported,
 };
 
-simdDctResult simdDCT_EncodeBuffer(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY);
+simdDctResult simdDCT_EncodeQuantizeReoderStereoBuffer(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY);
 
 #endif // simd_dct_h__

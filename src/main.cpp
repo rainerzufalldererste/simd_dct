@@ -84,11 +84,12 @@ int32_t main(int32_t argc, char **pArgv)
 {
   if (argc < 4)
   {
-    puts("Invalid Parameter.\n\nUsage: simd_dct <raw_image_file> <resolutionX> <resolutionY> [quality_level]");
+    puts("Invalid Parameter.\n\nUsage: simd_dct <raw_grayscale_image_file> <resolutionX> <resolutionY> [quality_level [out_file_name]]");
     return 1;
   }
 
   const char *filename = pArgv[1];
+  const char *outFilename = nullptr;
   float qualityLevel = 50;
   const size_t sizeX = strtoull(pArgv[2], nullptr, 10);
   const size_t sizeY = strtoull(pArgv[3], nullptr, 10);
@@ -163,6 +164,9 @@ int32_t main(int32_t argc, char **pArgv)
   for (size_t i = 0; i < 64; i++)
     quantizeBase[i] *= qualityLevel;
 
+  if (argc == 6)
+    outFilename = pArgv[5];
+
   _DetectCPUFeatures();
 
   // Print info. 
@@ -227,7 +231,7 @@ int32_t main(int32_t argc, char **pArgv)
     {
       const uint64_t startTick = GetCurrentTimeTicks();
       const uint64_t startClock = __rdtsc();
-      const simdDctResult result = simdDCT_EncodeBuffer(pInData, pOutData, quantizeBase, sizeX, sizeY, 0, sizeY);
+      const simdDctResult result = simdDCT_EncodeQuantizeReoderStereoBuffer(pInData, pOutData, quantizeBase, sizeX, sizeY, 0, sizeY);
       const uint64_t endClock = __rdtsc();
       const uint64_t endTick = GetCurrentTimeTicks();
 
@@ -247,6 +251,20 @@ int32_t main(int32_t argc, char **pArgv)
 
     puts("\nStats:");
     print_perf_info(fileSize);
+  }
+
+  if (outFilename != nullptr)
+  {
+    FILE *pFile = fopen(outFilename, "wb");
+    
+    if (pFile == nullptr)
+    {
+      puts("Failed to open destination file. Aborting.\n");
+      return 1;
+    }
+
+    fwrite(pOutData, 1, sizeX * sizeY, pFile);
+    fclose(pFile);
   }
 
   return 0;
