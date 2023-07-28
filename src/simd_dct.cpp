@@ -53,14 +53,19 @@ inline constexpr T _clamp(const T value, const U min, const V max)
   return value > min ? (value < max ? value : (T)max) : (T)min;
 }
 
-void simdDCT_EncodeQuantizeReoderStereoBuffer_NoSimd_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY);
-void simdDCT_EncodeQuantizeReoderStereoBuffer_SSE41_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY);
-void simdDCT_EncodeQuantizeReoderStereoBuffer_SSE2_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY);
-void simdDCT_EncodeQuantizeReoderStereoBuffer_SSSE3_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY);
+void simdDCT_EncodeQuantizeReorderStereoBuffer_NoSimd_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY);
+void simdDCT_EncodeQuantizeReorderStereoBuffer_SSE41_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY);
+void simdDCT_EncodeQuantizeReorderStereoBuffer_SSE2_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY);
+void simdDCT_EncodeQuantizeReorderStereoBuffer_SSSE3_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY);
+
+void simdDCT_EncodeQuantizeBuffer_NoSimd_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY);
+void simdDCT_EncodeQuantizeBuffer_SSE41_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY);
+void simdDCT_EncodeQuantizeBuffer_SSE2_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY);
+void simdDCT_EncodeQuantizeBuffer_SSSE3_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY);
 
 //////////////////////////////////////////////////////////////////////////
 
-simdDctResult simdDCT_EncodeQuantizeReoderStereoBuffer(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY)
+simdDctResult simdDCT_EncodeQuantizeReorderStereoBuffer(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY)
 {
   simdDctResult result = sdr_Success;
 
@@ -68,14 +73,34 @@ simdDctResult simdDCT_EncodeQuantizeReoderStereoBuffer(IN const uint8_t *pFrom, 
   _ERROR_IF((sizeX & ~7) != sizeX || (sizeY & ~7) != sizeY, sdr_NotSupported);
 
   if (sse41Supported && sse2Supported)
-    simdDCT_EncodeQuantizeReoderStereoBuffer_SSE41_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
+    simdDCT_EncodeQuantizeReorderStereoBuffer_SSE41_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
   else if (ssse3Supported && sse2Supported)
-    simdDCT_EncodeQuantizeReoderStereoBuffer_SSSE3_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
+    simdDCT_EncodeQuantizeReorderStereoBuffer_SSSE3_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
   else if (sse2Supported)
-    simdDCT_EncodeQuantizeReoderStereoBuffer_SSE2_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
+    simdDCT_EncodeQuantizeReorderStereoBuffer_SSE2_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
   else
-    simdDCT_EncodeQuantizeReoderStereoBuffer_NoSimd_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
+    simdDCT_EncodeQuantizeReorderStereoBuffer_NoSimd_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
   
+  goto epilogue;
+
+epilogue:
+  return result;
+}
+
+simdDctResult simdDCT_EncodeQuantizeBuffer(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY)
+{
+  simdDctResult result = sdr_Success;
+
+  _ERROR_IF(pFrom == nullptr || pTo == nullptr, sdr_InvalidParameter);
+  _ERROR_IF((sizeX & ~7) != sizeX || (sizeY & ~7) != sizeY, sdr_NotSupported);
+
+  if (sse41Supported && sse2Supported)
+    simdDCT_EncodeQuantizeBuffer_SSE41_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
+  else if (ssse3Supported && sse2Supported)
+    simdDCT_EncodeQuantizeBuffer_SSSE3_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
+  else
+    simdDCT_EncodeQuantizeBuffer_NoSimd_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
+
   goto epilogue;
 
 epilogue:
@@ -124,7 +149,7 @@ inline static void inplace_dct8(IN float *pBuffer)
 //////////////////////////////////////////////////////////////////////////
 
 // Reference Implementation.
-void simdDCT_EncodeQuantizeReoderStereoBuffer_NoSimd_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY)
+void simdDCT_EncodeQuantizeReorderStereoBuffer_NoSimd_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY)
 {
   struct internal
   {
@@ -243,6 +268,108 @@ void simdDCT_EncodeQuantizeReoderStereoBuffer_NoSimd_Float(IN const uint8_t *pFr
       internal::encode_line(sizeX, &intBuffer, fBuffer, pQuantizeLUT, pBlockStart, pOutPositions);
     }
 
+    pLine += 8 * sizeX;
+  }
+}
+
+void simdDCT_EncodeQuantizeBuffer_NoSimd_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY)
+{
+  struct internal
+  {
+    union intBuffer_t
+    {
+      uint8_t u8[64];
+      uint64_t u64[8];
+    };
+
+    static_assert(sizeof(intBuffer_t) == sizeof(uint8_t) * 64, "Invalid Struct Packing.");
+
+    static inline void encode_line(const size_t sizeX, IN_OUT intBuffer_t *pIntBuffer, IN_OUT float fBuffer[64], IN const float *pQuantizeLUT, IN const uint8_t *pBlockStart, OUT uint8_t *pTarget)
+    {
+      constexpr float vr = .95f;
+      constexpr float subtract = (127.0f / 255.0f);
+
+      const float qTable[64] =
+      {
+        1.f / (pQuantizeLUT[0] * vr), 1.f / (pQuantizeLUT[1] * vr), 1.f / (pQuantizeLUT[2] * vr), 1.f / (pQuantizeLUT[3] * vr),
+        1.f / (pQuantizeLUT[4] * vr), 1.f / (pQuantizeLUT[5] * vr), 1.f / (pQuantizeLUT[6] * vr), 1.f / (pQuantizeLUT[7] * vr),
+        1.f / (pQuantizeLUT[8] * vr), 1.f / (pQuantizeLUT[9] * vr), 1.f / (pQuantizeLUT[10] * vr), 1.f / (pQuantizeLUT[11] * vr),
+        1.f / (pQuantizeLUT[12] * vr), 1.f / (pQuantizeLUT[13] * vr), 1.f / (pQuantizeLUT[14] * vr), 1.f / (pQuantizeLUT[15] * vr),
+        1.f / (pQuantizeLUT[16] * vr), 1.f / (pQuantizeLUT[17] * vr), 1.f / (pQuantizeLUT[18] * vr), 1.f / (pQuantizeLUT[19] * vr),
+        1.f / (pQuantizeLUT[20] * vr), 1.f / (pQuantizeLUT[21] * vr), 1.f / (pQuantizeLUT[22] * vr), 1.f / (pQuantizeLUT[23] * vr),
+        1.f / (pQuantizeLUT[24] * vr), 1.f / (pQuantizeLUT[25] * vr), 1.f / (pQuantizeLUT[26] * vr), 1.f / (pQuantizeLUT[27] * vr),
+        1.f / (pQuantizeLUT[28] * vr), 1.f / (pQuantizeLUT[29] * vr), 1.f / (pQuantizeLUT[30] * vr), 1.f / (pQuantizeLUT[31] * vr),
+        1.f / (pQuantizeLUT[32] * vr), 1.f / (pQuantizeLUT[33] * vr), 1.f / (pQuantizeLUT[34] * vr), 1.f / (pQuantizeLUT[35] * vr),
+        1.f / (pQuantizeLUT[36] * vr), 1.f / (pQuantizeLUT[37] * vr), 1.f / (pQuantizeLUT[38] * vr), 1.f / (pQuantizeLUT[39] * vr),
+        1.f / (pQuantizeLUT[40] * vr), 1.f / (pQuantizeLUT[41] * vr), 1.f / (pQuantizeLUT[42] * vr), 1.f / (pQuantizeLUT[43] * vr),
+        1.f / (pQuantizeLUT[44] * vr), 1.f / (pQuantizeLUT[45] * vr), 1.f / (pQuantizeLUT[46] * vr), 1.f / (pQuantizeLUT[47] * vr),
+        1.f / (pQuantizeLUT[48] * vr), 1.f / (pQuantizeLUT[49] * vr), 1.f / (pQuantizeLUT[50] * vr), 1.f / (pQuantizeLUT[51] * vr),
+        1.f / (pQuantizeLUT[52] * vr), 1.f / (pQuantizeLUT[53] * vr), 1.f / (pQuantizeLUT[54] * vr), 1.f / (pQuantizeLUT[55] * vr),
+        1.f / (pQuantizeLUT[56] * vr), 1.f / (pQuantizeLUT[57] * vr), 1.f / (pQuantizeLUT[58] * vr), 1.f / (pQuantizeLUT[59] * vr),
+        1.f / (pQuantizeLUT[60] * vr), 1.f / (pQuantizeLUT[61] * vr), 1.f / (pQuantizeLUT[62] * vr), 1.f / (pQuantizeLUT[63] * vr)
+      };
+
+      for (size_t x = 0; x < sizeX; x += 8)
+      {
+        // Acquire block.
+        for (size_t i = 0; i < 8; i++)
+          pIntBuffer->u64[i] = *reinterpret_cast<const uint64_t *>(pBlockStart + sizeX * i);
+
+        // Convert to float.
+        for (size_t i = 0; i < 64; i++)
+          fBuffer[i] = pIntBuffer->u8[i] / 255.f;
+
+        // Swap dimensions.
+        for (size_t i = 0; i < 8; i++)
+          for (size_t j = i + 1; j < 8; j++)
+            std::swap(fBuffer[j + i * 8], fBuffer[i + j * 8]);
+
+        // Apply discrete cosine transform.
+        for (size_t i = 0; i < 8; i++)
+          inplace_dct8(fBuffer + i * 8);
+
+        // Swap dimensions.
+        for (size_t i = 0; i < 8; i++)
+          for (size_t j = i + 1; j < 8; j++)
+            std::swap(fBuffer[j + i * 8], fBuffer[i + j * 8]);
+
+        // Apply discrete cosine transform.
+        for (size_t i = 0; i < 8; i++)
+          inplace_dct8(fBuffer + i * 8);
+
+        // Convert & Store.
+        for (size_t i = 0; i < 64; i++)
+          pTarget[i] = (uint8_t)roundf(_clamp((fBuffer[i] * qTable[i]) + subtract, 0.f, 1.f) * 255.f);
+
+        pTarget += 64;
+        pBlockStart += 8;
+      }
+    }
+  };
+
+  internal::intBuffer_t intBuffer;
+  float fBuffer[64];
+
+  const uint8_t *pLine = pFrom;
+
+  for (size_t y = 0; y < sizeY / 2; y += 8)
+  {
+    if (y < startY)
+    {
+      pLine += 8 * sizeX;
+      pTo += 8 * sizeX;
+
+      continue;
+    }
+    else if (y > endY)
+    {
+      break;
+    }
+
+    const uint8_t *pBlockStart = pLine;
+    internal::encode_line(sizeX, &intBuffer, fBuffer, pQuantizeLUT, pBlockStart, pTo);
+
+    pTo += 8 * sizeX;
     pLine += 8 * sizeX;
   }
 }
@@ -737,7 +864,7 @@ inline static void _VECTORCALL inplace_dct8_sse41(IN __m128 *pBuffer)
 
 //////////////////////////////////////////////////////////////////////////
 
-void simdDCT_EncodeQuantizeReoderStereoBuffer_SSE41_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY)
+void simdDCT_EncodeQuantizeReorderStereoBuffer_SSE41_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY)
 {
   struct internal
   {
@@ -946,8 +1073,8 @@ void simdDCT_EncodeQuantizeReoderStereoBuffer_SSE41_Float(IN const uint8_t *pFro
   }
 }
 
-// This function is derived from `simdDCT_EncodeQuantizeReoderStereoBuffer_SSE41_Float` by replacing the few replaceable SSE4.1 intrinsics with non-SIMD implementations.
-void simdDCT_EncodeQuantizeReoderStereoBuffer_SSE2_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY)
+// This function is derived from `simdDCT_EncodeQuantizeReorderStereoBuffer_SSE41_Float` by replacing the few replaceable SSE4.1 intrinsics with non-SIMD implementations.
+void simdDCT_EncodeQuantizeReorderStereoBuffer_SSE2_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY)
 {
   struct internal
   {
@@ -1170,8 +1297,8 @@ void simdDCT_EncodeQuantizeReoderStereoBuffer_SSE2_Float(IN const uint8_t *pFrom
   }
 }
 
-// This function is derived from `simdDCT_EncodeQuantizeReoderStereoBuffer_SSE2_Float` by replacing `_mm_cvtepu8_epi32_no_simd` with an SSSE3 alternative.
-void simdDCT_EncodeQuantizeReoderStereoBuffer_SSSE3_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY)
+// This function is derived from `simdDCT_EncodeQuantizeReorderStereoBuffer_SSE2_Float` by replacing `_mm_cvtepu8_epi32_no_simd` with an SSSE3 alternative.
+void simdDCT_EncodeQuantizeReorderStereoBuffer_SSSE3_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY)
 {
   struct internal
   {
@@ -1385,5 +1512,333 @@ void simdDCT_EncodeQuantizeReoderStereoBuffer_SSSE3_Float(IN const uint8_t *pFro
     }
 
     pLine += 8 * sizeX;
+  }
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void simdDCT_EncodeQuantizeBuffer_SSE41_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY)
+{
+  struct internal
+  {
+#ifndef _MSC_VER
+    __attribute__((target("sse4.1")))
+#endif
+    static inline void encode_line(const size_t sizeX, IN const float *pQuantizeLUT, IN const uint8_t *pBlockStart, OUT uint8_t *pTo)
+    {
+      constexpr float vr = .95f;
+      constexpr float subtract = 127.0f;
+
+      _ALIGN(16) __m128 qTable[64 / 4];
+
+      qTable[0] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[0] * vr)), (255.0f / (pQuantizeLUT[1] * vr)), (255.0f / (pQuantizeLUT[2] * vr)), (255.0f / (pQuantizeLUT[3] * vr)));
+      qTable[1] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[4] * vr)), (255.0f / (pQuantizeLUT[5] * vr)), (255.0f / (pQuantizeLUT[6] * vr)), (255.0f / (pQuantizeLUT[7] * vr)));
+      qTable[2] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[8] * vr)), (255.0f / (pQuantizeLUT[9] * vr)), (255.0f / (pQuantizeLUT[10] * vr)), (255.0f / (pQuantizeLUT[11] * vr)));
+      qTable[3] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[12] * vr)), (255.0f / (pQuantizeLUT[13] * vr)), (255.0f / (pQuantizeLUT[14] * vr)), (255.0f / (pQuantizeLUT[15] * vr)));
+      qTable[4] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[16] * vr)), (255.0f / (pQuantizeLUT[17] * vr)), (255.0f / (pQuantizeLUT[18] * vr)), (255.0f / (pQuantizeLUT[19] * vr)));
+      qTable[5] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[20] * vr)), (255.0f / (pQuantizeLUT[21] * vr)), (255.0f / (pQuantizeLUT[22] * vr)), (255.0f / (pQuantizeLUT[23] * vr)));
+      qTable[6] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[24] * vr)), (255.0f / (pQuantizeLUT[25] * vr)), (255.0f / (pQuantizeLUT[26] * vr)), (255.0f / (pQuantizeLUT[27] * vr)));
+      qTable[7] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[28] * vr)), (255.0f / (pQuantizeLUT[29] * vr)), (255.0f / (pQuantizeLUT[30] * vr)), (255.0f / (pQuantizeLUT[31] * vr)));
+      qTable[8] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[32] * vr)), (255.0f / (pQuantizeLUT[33] * vr)), (255.0f / (pQuantizeLUT[34] * vr)), (255.0f / (pQuantizeLUT[35] * vr)));
+      qTable[9] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[36] * vr)), (255.0f / (pQuantizeLUT[37] * vr)), (255.0f / (pQuantizeLUT[38] * vr)), (255.0f / (pQuantizeLUT[39] * vr)));
+      qTable[10] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[40] * vr)), (255.0f / (pQuantizeLUT[41] * vr)), (255.0f / (pQuantizeLUT[42] * vr)), (255.0f / (pQuantizeLUT[43] * vr)));
+      qTable[11] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[44] * vr)), (255.0f / (pQuantizeLUT[45] * vr)), (255.0f / (pQuantizeLUT[46] * vr)), (255.0f / (pQuantizeLUT[47] * vr)));
+      qTable[12] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[48] * vr)), (255.0f / (pQuantizeLUT[49] * vr)), (255.0f / (pQuantizeLUT[50] * vr)), (255.0f / (pQuantizeLUT[51] * vr)));
+      qTable[13] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[52] * vr)), (255.0f / (pQuantizeLUT[53] * vr)), (255.0f / (pQuantizeLUT[54] * vr)), (255.0f / (pQuantizeLUT[55] * vr)));
+      qTable[14] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[56] * vr)), (255.0f / (pQuantizeLUT[57] * vr)), (255.0f / (pQuantizeLUT[58] * vr)), (255.0f / (pQuantizeLUT[59] * vr)));
+      qTable[15] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[60] * vr)), (255.0f / (pQuantizeLUT[61] * vr)), (255.0f / (pQuantizeLUT[62] * vr)), (255.0f / (pQuantizeLUT[63] * vr)));
+
+      _ALIGN(16) __m128i localBuffer[8];
+      static_assert(sizeof(localBuffer) == sizeof(uint8_t) * 128, "Invalid Size.");
+
+      union _ALIGN(16)
+      {
+        __m128 intermediateBuffer[128 / sizeof(__m128i) * sizeof(float)];
+        float intermediateBufferF[128];
+      };
+
+      static_assert(sizeof(intermediateBuffer) == sizeof(float) * 128, "Invalid Packing");
+      static_assert(sizeof(intermediateBufferF) == sizeof(__m128i) * 32, "Invalid Packing");
+
+
+#define _ -1
+      const __m128i shuffleMask = _mm_set_epi8(_, _, _, _, _, _, _, _, _, _, _, _, 12, 8, 4, 0);
+#undef _
+
+      for (size_t x = 0; x < sizeX; x += 16)
+      {
+        // Acquire block.
+        {
+          for (size_t i = 0; i < 8; i++)
+            localBuffer[i] = _mm_loadu_si128(reinterpret_cast<const __m128i *>(pBlockStart + sizeX * i));
+        }
+
+        // Convert to intermediateBuffer.
+        {
+          const __m128 inverse_0xFF_float = _mm_set1_ps(1.f / (float)0xFF);
+
+          for (size_t i = 0; i < 8; i++)
+          {
+            intermediateBuffer[i * 4 + 0] = _mm_mul_ps(inverse_0xFF_float, _mm_cvtepi32_ps(_mm_cvtepu8_epi32(localBuffer[i]))); // _mm_cvtepu8_epi32 is SSE4.1 (!)
+            intermediateBuffer[i * 4 + 1] = _mm_mul_ps(inverse_0xFF_float, _mm_cvtepi32_ps(_mm_cvtepu8_epi32(_mm_srli_si128(localBuffer[i], 4))));
+            intermediateBuffer[i * 4 + 2] = _mm_mul_ps(inverse_0xFF_float, _mm_cvtepi32_ps(_mm_cvtepu8_epi32(_mm_srli_si128(localBuffer[i], 8))));
+            intermediateBuffer[i * 4 + 3] = _mm_mul_ps(inverse_0xFF_float, _mm_cvtepi32_ps(_mm_cvtepu8_epi32(_mm_srli_si128(localBuffer[i], 12))));
+          }
+        }
+
+        // Apply discrete cosine transform.
+        for (size_t i = 0; i < 8; i++)
+          inplace_dct8_sse41(intermediateBuffer + i * 4);
+
+        // Swap dimensions.
+        {
+          for (size_t i = 0; i < 8; i++)
+          {
+            for (size_t j = i + 1; j < 8; j++)
+            {
+              {
+                const float tmp = intermediateBufferF[i * 16 + j];
+                intermediateBufferF[i * 16 + j] = intermediateBufferF[j * 16 + i];
+                intermediateBufferF[j * 16 + i] = tmp;
+              }
+
+              {
+                const float tmp = intermediateBufferF[i * 16 + j + 8];
+                intermediateBufferF[i * 16 + j + 8] = intermediateBufferF[j * 16 + i + 8];
+                intermediateBufferF[j * 16 + i + 8] = tmp;
+              }
+            }
+          }
+        }
+
+        // Apply discrete cosine transform.
+        for (size_t i = 0; i < 8; i++)
+          inplace_dct8_sse41(intermediateBuffer + i * 4);
+
+        // Convert & Store.
+        {
+          // Prepare:
+          const __m128i _0xFF = _mm_set1_epi32(0xFF);
+          const __m128 _subtract = _mm_set1_ps(subtract);
+
+          for (size_t i = 0; i < 8; i++)
+          {
+            // Convert:
+            // intermediateBuffer[i] = min(0xFF, max(0, (intermediateBuffer[i] * qTable[i] + subtract)));
+            const __m128i clamped04 = _mm_min_epi32(_0xFF, _mm_max_epi32(_mm_setzero_si128(), _mm_cvtps_epi32(_mm_add_ps(_mm_mul_ps(intermediateBuffer[i * 4], qTable[i * 2]), _subtract))));
+            const __m128i clamped15 = _mm_min_epi32(_0xFF, _mm_max_epi32(_mm_setzero_si128(), _mm_cvtps_epi32(_mm_add_ps(_mm_mul_ps(intermediateBuffer[i * 4 + 1], qTable[i * 2 + 1]), _subtract))));
+
+            const __m128i clamped26 = _mm_min_epi32(_0xFF, _mm_max_epi32(_mm_setzero_si128(), _mm_cvtps_epi32(_mm_add_ps(_mm_mul_ps(intermediateBuffer[i * 4 + 2], qTable[i * 2]), _subtract))));
+            const __m128i clamped37 = _mm_min_epi32(_0xFF, _mm_max_epi32(_mm_setzero_si128(), _mm_cvtps_epi32(_mm_add_ps(_mm_mul_ps(intermediateBuffer[i * 4 + 3], qTable[i * 2 + 1]), _subtract))));
+
+            // Extract: (_mm_extract_epi32 is SSE4.1 (!))
+            const uint32_t bytes04 = _mm_extract_epi32(_mm_shuffle_epi8(clamped04, shuffleMask), 0);
+            const uint32_t bytes15 = _mm_extract_epi32(_mm_shuffle_epi8(clamped15, shuffleMask), 0);
+            const uint32_t bytes26 = _mm_extract_epi32(_mm_shuffle_epi8(clamped26, shuffleMask), 0);
+            const uint32_t bytes37 = _mm_extract_epi32(_mm_shuffle_epi8(clamped37, shuffleMask), 0);
+
+            // Store:
+            // *pTo[i] = (uint8_t)intermediateBuffer[i];
+            reinterpret_cast<uint16_t *>(pTo)[0] = (uint16_t)bytes04;
+            reinterpret_cast<uint16_t *>(pTo)[1] = (uint16_t)bytes15;
+            reinterpret_cast<uint16_t *>(pTo)[2] = (uint16_t)bytes26;
+            reinterpret_cast<uint16_t *>(pTo)[3] = (uint16_t)bytes37;
+
+            reinterpret_cast<uint16_t *>(pTo)[64] = (uint16_t)(bytes04 >> 16);
+            reinterpret_cast<uint16_t *>(pTo)[65] = (uint16_t)(bytes15 >> 16);
+            reinterpret_cast<uint16_t *>(pTo)[66] = (uint16_t)(bytes26 >> 16);
+            reinterpret_cast<uint16_t *>(pTo)[67] = (uint16_t)(bytes37 >> 16);
+
+            pTo += 8;
+          }
+        }
+
+        pTo += 64;
+        pBlockStart += 16;
+      }
+    }
+  };
+
+  const uint8_t *pLine = pFrom;
+
+  for (size_t y = 0; y < sizeY / 2; y += 8)
+  {
+    if (y * 2 < startY)
+    {
+      pLine += 8 * sizeX;
+      pTo += 8 * sizeX;
+
+      continue;
+    }
+    else if (y * 2 > endY)
+    {
+      break;
+    }
+
+    const uint8_t *pBlockStart = pLine;
+    internal::encode_line(sizeX, pQuantizeLUT, pBlockStart, pTo);
+
+    pLine += 8 * sizeX;
+    pTo += 8 * sizeX;
+  }
+}
+
+// This function is derived from `simdDCT_EncodeQuantizeBuffer_SSE41_Float` by extracting 16 bit values instead of 32 bit values.
+void simdDCT_EncodeQuantizeBuffer_SSSE3_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY)
+{
+  struct internal
+  {
+#ifndef _MSC_VER
+    __attribute__((target("ssse3")))
+#endif
+      static inline void encode_line(const size_t sizeX, IN const float *pQuantizeLUT, IN const uint8_t *pBlockStart, OUT uint8_t *pTo)
+    {
+      constexpr float vr = .95f;
+      constexpr float subtract = 127.0f;
+
+      _ALIGN(16) __m128 qTable[64 / 4];
+
+      qTable[0] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[0] * vr)), (255.0f / (pQuantizeLUT[1] * vr)), (255.0f / (pQuantizeLUT[2] * vr)), (255.0f / (pQuantizeLUT[3] * vr)));
+      qTable[1] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[4] * vr)), (255.0f / (pQuantizeLUT[5] * vr)), (255.0f / (pQuantizeLUT[6] * vr)), (255.0f / (pQuantizeLUT[7] * vr)));
+      qTable[2] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[8] * vr)), (255.0f / (pQuantizeLUT[9] * vr)), (255.0f / (pQuantizeLUT[10] * vr)), (255.0f / (pQuantizeLUT[11] * vr)));
+      qTable[3] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[12] * vr)), (255.0f / (pQuantizeLUT[13] * vr)), (255.0f / (pQuantizeLUT[14] * vr)), (255.0f / (pQuantizeLUT[15] * vr)));
+      qTable[4] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[16] * vr)), (255.0f / (pQuantizeLUT[17] * vr)), (255.0f / (pQuantizeLUT[18] * vr)), (255.0f / (pQuantizeLUT[19] * vr)));
+      qTable[5] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[20] * vr)), (255.0f / (pQuantizeLUT[21] * vr)), (255.0f / (pQuantizeLUT[22] * vr)), (255.0f / (pQuantizeLUT[23] * vr)));
+      qTable[6] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[24] * vr)), (255.0f / (pQuantizeLUT[25] * vr)), (255.0f / (pQuantizeLUT[26] * vr)), (255.0f / (pQuantizeLUT[27] * vr)));
+      qTable[7] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[28] * vr)), (255.0f / (pQuantizeLUT[29] * vr)), (255.0f / (pQuantizeLUT[30] * vr)), (255.0f / (pQuantizeLUT[31] * vr)));
+      qTable[8] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[32] * vr)), (255.0f / (pQuantizeLUT[33] * vr)), (255.0f / (pQuantizeLUT[34] * vr)), (255.0f / (pQuantizeLUT[35] * vr)));
+      qTable[9] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[36] * vr)), (255.0f / (pQuantizeLUT[37] * vr)), (255.0f / (pQuantizeLUT[38] * vr)), (255.0f / (pQuantizeLUT[39] * vr)));
+      qTable[10] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[40] * vr)), (255.0f / (pQuantizeLUT[41] * vr)), (255.0f / (pQuantizeLUT[42] * vr)), (255.0f / (pQuantizeLUT[43] * vr)));
+      qTable[11] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[44] * vr)), (255.0f / (pQuantizeLUT[45] * vr)), (255.0f / (pQuantizeLUT[46] * vr)), (255.0f / (pQuantizeLUT[47] * vr)));
+      qTable[12] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[48] * vr)), (255.0f / (pQuantizeLUT[49] * vr)), (255.0f / (pQuantizeLUT[50] * vr)), (255.0f / (pQuantizeLUT[51] * vr)));
+      qTable[13] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[52] * vr)), (255.0f / (pQuantizeLUT[53] * vr)), (255.0f / (pQuantizeLUT[54] * vr)), (255.0f / (pQuantizeLUT[55] * vr)));
+      qTable[14] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[56] * vr)), (255.0f / (pQuantizeLUT[57] * vr)), (255.0f / (pQuantizeLUT[58] * vr)), (255.0f / (pQuantizeLUT[59] * vr)));
+      qTable[15] = _mm_set_ps_reverse((255.0f / (pQuantizeLUT[60] * vr)), (255.0f / (pQuantizeLUT[61] * vr)), (255.0f / (pQuantizeLUT[62] * vr)), (255.0f / (pQuantizeLUT[63] * vr)));
+
+      _ALIGN(16) __m128i localBuffer[8];
+      static_assert(sizeof(localBuffer) == sizeof(uint8_t) * 128, "Invalid Size.");
+
+      union _ALIGN(16)
+      {
+        __m128 intermediateBuffer[128 / sizeof(__m128i) * sizeof(float)];
+        float intermediateBufferF[128];
+      };
+
+      static_assert(sizeof(intermediateBuffer) == sizeof(float) * 128, "Invalid Packing");
+      static_assert(sizeof(intermediateBufferF) == sizeof(__m128i) * 32, "Invalid Packing");
+
+
+#define _ -1
+      const __m128i shuffleMask = _mm_set_epi8(_, _, _, _, _, _, _, _, _, _, _, _, 12, 8, 4, 0);
+#undef _
+
+      for (size_t x = 0; x < sizeX; x += 16)
+      {
+        // Acquire block.
+        {
+          for (size_t i = 0; i < 8; i++)
+            localBuffer[i] = _mm_loadu_si128(reinterpret_cast<const __m128i *>(pBlockStart + sizeX * i));
+        }
+
+        // Convert to intermediateBuffer.
+        {
+          const __m128 inverse_0xFF_float = _mm_set1_ps(1.f / (float)0xFF);
+
+          for (size_t i = 0; i < 8; i++)
+          {
+            intermediateBuffer[i * 4 + 0] = _mm_mul_ps(inverse_0xFF_float, _mm_cvtepi32_ps(_mm_cvtepu8_epi32(localBuffer[i]))); // _mm_cvtepu8_epi32 is SSE4.1 (!)
+            intermediateBuffer[i * 4 + 1] = _mm_mul_ps(inverse_0xFF_float, _mm_cvtepi32_ps(_mm_cvtepu8_epi32(_mm_srli_si128(localBuffer[i], 4))));
+            intermediateBuffer[i * 4 + 2] = _mm_mul_ps(inverse_0xFF_float, _mm_cvtepi32_ps(_mm_cvtepu8_epi32(_mm_srli_si128(localBuffer[i], 8))));
+            intermediateBuffer[i * 4 + 3] = _mm_mul_ps(inverse_0xFF_float, _mm_cvtepi32_ps(_mm_cvtepu8_epi32(_mm_srli_si128(localBuffer[i], 12))));
+          }
+        }
+
+        // Apply discrete cosine transform.
+        for (size_t i = 0; i < 8; i++)
+          inplace_dct8_sse2(intermediateBuffer + i * 4);
+
+        // Swap dimensions.
+        {
+          for (size_t i = 0; i < 8; i++)
+          {
+            for (size_t j = i + 1; j < 8; j++)
+            {
+              {
+                const float tmp = intermediateBufferF[i * 16 + j];
+                intermediateBufferF[i * 16 + j] = intermediateBufferF[j * 16 + i];
+                intermediateBufferF[j * 16 + i] = tmp;
+              }
+
+              {
+                const float tmp = intermediateBufferF[i * 16 + j + 8];
+                intermediateBufferF[i * 16 + j + 8] = intermediateBufferF[j * 16 + i + 8];
+                intermediateBufferF[j * 16 + i + 8] = tmp;
+              }
+            }
+          }
+        }
+
+        // Apply discrete cosine transform.
+        for (size_t i = 0; i < 8; i++)
+          inplace_dct8_sse2(intermediateBuffer + i * 4);
+
+        // Convert & Store.
+        {
+          // Prepare:
+          const __m128i _0xFF = _mm_set1_epi32(0xFF);
+          const __m128 _subtract = _mm_set1_ps(subtract);
+
+          for (size_t i = 0; i < 8; i++)
+          {
+            // Convert:
+            // intermediateBuffer[i] = min(0xFF, max(0, (intermediateBuffer[i] * qTable[i] + subtract)));
+            const __m128i clamped04 = _mm_min_epi32(_0xFF, _mm_max_epi32(_mm_setzero_si128(), _mm_cvtps_epi32(_mm_add_ps(_mm_mul_ps(intermediateBuffer[i * 4], qTable[i * 2]), _subtract))));
+            const __m128i clamped15 = _mm_min_epi32(_0xFF, _mm_max_epi32(_mm_setzero_si128(), _mm_cvtps_epi32(_mm_add_ps(_mm_mul_ps(intermediateBuffer[i * 4 + 1], qTable[i * 2 + 1]), _subtract))));
+            const __m128i clamped26 = _mm_min_epi32(_0xFF, _mm_max_epi32(_mm_setzero_si128(), _mm_cvtps_epi32(_mm_add_ps(_mm_mul_ps(intermediateBuffer[i * 4 + 2], qTable[i * 2]), _subtract))));
+            const __m128i clamped37 = _mm_min_epi32(_0xFF, _mm_max_epi32(_mm_setzero_si128(), _mm_cvtps_epi32(_mm_add_ps(_mm_mul_ps(intermediateBuffer[i * 4 + 3], qTable[i * 2 + 1]), _subtract))));
+
+            // Store:
+            // *pTo[i] = (uint8_t)intermediateBuffer[i];
+            reinterpret_cast<uint16_t *>(pTo)[0] = (uint16_t)_mm_extract_epi16(clamped04, 0);
+            reinterpret_cast<uint16_t *>(pTo)[1] = (uint16_t)_mm_extract_epi16(clamped15, 0);
+            reinterpret_cast<uint16_t *>(pTo)[2] = (uint16_t)_mm_extract_epi16(clamped26, 0);
+            reinterpret_cast<uint16_t *>(pTo)[3] = (uint16_t)_mm_extract_epi16(clamped37, 0);
+
+            reinterpret_cast<uint16_t *>(pTo)[64] = (uint16_t)_mm_extract_epi16(clamped04, 1);
+            reinterpret_cast<uint16_t *>(pTo)[65] = (uint16_t)_mm_extract_epi16(clamped15, 1);
+            reinterpret_cast<uint16_t *>(pTo)[66] = (uint16_t)_mm_extract_epi16(clamped26, 1);
+            reinterpret_cast<uint16_t *>(pTo)[67] = (uint16_t)_mm_extract_epi16(clamped37, 1);
+
+            pTo += 8;
+          }
+        }
+
+        pTo += 64;
+        pBlockStart += 16;
+      }
+    }
+  };
+
+  const uint8_t *pLine = pFrom;
+
+  for (size_t y = 0; y < sizeY / 2; y += 8)
+  {
+    if (y * 2 < startY)
+    {
+      pLine += 8 * sizeX;
+      pTo += 8 * sizeX;
+
+      continue;
+    }
+    else if (y * 2 > endY)
+    {
+      break;
+    }
+
+    const uint8_t *pBlockStart = pLine;
+    internal::encode_line(sizeX, pQuantizeLUT, pBlockStart, pTo);
+
+    pLine += 8 * sizeX;
+    pTo += 8 * sizeX;
   }
 }

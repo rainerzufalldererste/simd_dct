@@ -17,7 +17,7 @@
 
 //////////////////////////////////////////////////////////////////////////
 
-size_t _RunCount = 32;
+size_t _RunCount = 16;
 
 constexpr size_t MaxRunCount = 256;
 static uint64_t _ClocksPerRun[MaxRunCount];
@@ -225,13 +225,13 @@ int32_t main(int32_t argc, char **pArgv)
     puts("\n");
   }
 
-  // Encode.
+  // EncodeQuantizeReorderStereo.
   {
     for (size_t run = 0; run < _RunCount; run++)
     {
       const uint64_t startTick = GetCurrentTimeTicks();
       const uint64_t startClock = __rdtsc();
-      const simdDctResult result = simdDCT_EncodeQuantizeReoderStereoBuffer(pInData, pOutData, quantizeBase, sizeX, sizeY, 0, sizeY);
+      const simdDctResult result = simdDCT_EncodeQuantizeReorderStereoBuffer(pInData, pOutData, quantizeBase, sizeX, sizeY, 0, sizeY);
       const uint64_t endClock = __rdtsc();
       const uint64_t endTick = GetCurrentTimeTicks();
 
@@ -240,7 +240,7 @@ int32_t main(int32_t argc, char **pArgv)
       _NsPerRun[run] = TicksToNs(endTick - startTick);
       _ClocksPerRun[run] = endClock - startClock;
 
-      printf("% 3" PRIu64 ": %6.3f clocks/byte, %5.2f MiB/s\n", run + 1, (endClock - startClock) / (double)fileSize, (fileSize / (1024.0 * 1024.0)) / (TicksToNs(endTick - startTick) * 1e-9));
+      printf("\r% 3" PRIu64 ": %6.3f clocks/byte, %5.2f MiB/s", run + 1, (endClock - startClock) / (double)fileSize, (fileSize / (1024.0 * 1024.0)) / (TicksToNs(endTick - startTick) * 1e-9));
 
       if (_FAILED(result))
       {
@@ -249,7 +249,35 @@ int32_t main(int32_t argc, char **pArgv)
       }
     }
 
-    puts("\nStats:");
+    printf("\r%-30s ", "EncQuantReordStereo");
+    print_perf_info(fileSize);
+  }
+
+  // EncodeQuantize.
+  {
+    for (size_t run = 0; run < _RunCount; run++)
+    {
+      const uint64_t startTick = GetCurrentTimeTicks();
+      const uint64_t startClock = __rdtsc();
+      const simdDctResult result = simdDCT_EncodeQuantizeBuffer(pInData, pOutData, quantizeBase, sizeX, sizeY, 0, sizeY);
+      const uint64_t endClock = __rdtsc();
+      const uint64_t endTick = GetCurrentTimeTicks();
+
+      _mm_mfence();
+
+      _NsPerRun[run] = TicksToNs(endTick - startTick);
+      _ClocksPerRun[run] = endClock - startClock;
+
+      printf("\r% 3" PRIu64 ": %6.3f clocks/byte, %5.2f MiB/s", run + 1, (endClock - startClock) / (double)fileSize, (fileSize / (1024.0 * 1024.0)) / (TicksToNs(endTick - startTick) * 1e-9));
+
+      if (_FAILED(result))
+      {
+        printf("Encode failed with error code 0x%" PRIX64 ". Aborting.\n", (uint64_t)result);
+        return 1;
+      }
+    }
+
+    printf("\r%-30s ", "Encode Quantize");
     print_perf_info(fileSize);
   }
 
