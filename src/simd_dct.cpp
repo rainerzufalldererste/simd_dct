@@ -633,6 +633,15 @@ inline void _VECTORCALL inplace_dct8_sse2(IN __m128 *pBuffer)
   pBuffer[3] = _mm_mul_ps(cnorm, _mm_castsi128_ps(buffer3));
 }
 
+#ifndef _MSC_VER
+__attribute__((target("ssse3")))
+#endif
+inline static __m128i _mm_cvtepu8_epi32_ssse3(__m128i val)
+{
+  const __m128i shuffle_mask = _mm_set_epi8_reverse(0, -1, -1, -1, 1, -1, -1, -1, 2, -1, -1, -1, 3, -1, -1, -1);
+  return _mm_shuffle_epi8(val, shuffle_mask);
+}
+
 // The SSE4.1 Variant is the most compliant and fastest variant.
 // Since the required components of SSE4.1 are either very minor (`_mm_extract_ps` for extracting a specifics float from a __m128) 
 //  or can very easily be implemented without SSE4.1 (`_mm_cvtepu8_epi32` for expanding 8 bit unsigned integers to 32 bit signed integers),
@@ -1305,15 +1314,6 @@ void simdDCT_EncodeQuantizeReorderStereoBuffer_SSSE3_Float(IN const uint8_t *pFr
 #ifndef _MSC_VER
     __attribute__((target("ssse3")))
 #endif
-    inline static __m128i _mm_cvtepu8_epi32_ssse3(__m128i val)
-    {
-      const __m128i shuffle_mask = _mm_set_epi8_reverse(0, -1, -1, -1, 1, -1, -1, -1, 2, -1, -1, -1, 3, -1, -1, -1);
-      return _mm_shuffle_epi8(val, shuffle_mask);
-    }
-
-#ifndef _MSC_VER
-    __attribute__((target("ssse3")))
-#endif
       static inline void encode_line(const size_t sizeX, IN const float *pQuantizeLUT, IN const uint8_t *pBlockStart, IN_OUT uint16_t *pOutPositions[64])
     {
       constexpr float vr = .95f;
@@ -1746,10 +1746,10 @@ void simdDCT_EncodeQuantizeBuffer_SSSE3_Float(IN const uint8_t *pFrom, OUT uint8
 
           for (size_t i = 0; i < 8; i++)
           {
-            intermediateBuffer[i * 4 + 0] = _mm_mul_ps(inverse_0xFF_float, _mm_cvtepi32_ps(_mm_cvtepu8_epi32(localBuffer[i]))); // _mm_cvtepu8_epi32 is SSE4.1 (!)
-            intermediateBuffer[i * 4 + 1] = _mm_mul_ps(inverse_0xFF_float, _mm_cvtepi32_ps(_mm_cvtepu8_epi32(_mm_srli_si128(localBuffer[i], 4))));
-            intermediateBuffer[i * 4 + 2] = _mm_mul_ps(inverse_0xFF_float, _mm_cvtepi32_ps(_mm_cvtepu8_epi32(_mm_srli_si128(localBuffer[i], 8))));
-            intermediateBuffer[i * 4 + 3] = _mm_mul_ps(inverse_0xFF_float, _mm_cvtepi32_ps(_mm_cvtepu8_epi32(_mm_srli_si128(localBuffer[i], 12))));
+            intermediateBuffer[i * 4 + 0] = _mm_mul_ps(inverse_0xFF_float, _mm_cvtepi32_ps(_mm_cvtepu8_epi32_ssse3(localBuffer[i])));
+            intermediateBuffer[i * 4 + 1] = _mm_mul_ps(inverse_0xFF_float, _mm_cvtepi32_ps(_mm_cvtepu8_epi32_ssse3(_mm_srli_si128(localBuffer[i], 4))));
+            intermediateBuffer[i * 4 + 2] = _mm_mul_ps(inverse_0xFF_float, _mm_cvtepi32_ps(_mm_cvtepu8_epi32_ssse3(_mm_srli_si128(localBuffer[i], 8))));
+            intermediateBuffer[i * 4 + 3] = _mm_mul_ps(inverse_0xFF_float, _mm_cvtepi32_ps(_mm_cvtepu8_epi32_ssse3(_mm_srli_si128(localBuffer[i], 12))));
           }
         }
 
@@ -1785,17 +1785,17 @@ void simdDCT_EncodeQuantizeBuffer_SSSE3_Float(IN const uint8_t *pFrom, OUT uint8
         // Convert & Store.
         {
           // Prepare:
-          const __m128i _0xFF = _mm_set1_epi32(0xFF);
+          const __m128 _0xFFf = _mm_set1_ps((float)0xFF);
           const __m128 _subtract = _mm_set1_ps(subtract);
 
           for (size_t i = 0; i < 8; i++)
           {
             // Convert:
             // intermediateBuffer[i] = min(0xFF, max(0, (intermediateBuffer[i] * qTable[i] + subtract)));
-            const __m128i clamped04 = _mm_min_epi32(_0xFF, _mm_max_epi32(_mm_setzero_si128(), _mm_cvtps_epi32(_mm_add_ps(_mm_mul_ps(intermediateBuffer[i * 4], qTable[i * 2]), _subtract))));
-            const __m128i clamped15 = _mm_min_epi32(_0xFF, _mm_max_epi32(_mm_setzero_si128(), _mm_cvtps_epi32(_mm_add_ps(_mm_mul_ps(intermediateBuffer[i * 4 + 1], qTable[i * 2 + 1]), _subtract))));
-            const __m128i clamped26 = _mm_min_epi32(_0xFF, _mm_max_epi32(_mm_setzero_si128(), _mm_cvtps_epi32(_mm_add_ps(_mm_mul_ps(intermediateBuffer[i * 4 + 2], qTable[i * 2]), _subtract))));
-            const __m128i clamped37 = _mm_min_epi32(_0xFF, _mm_max_epi32(_mm_setzero_si128(), _mm_cvtps_epi32(_mm_add_ps(_mm_mul_ps(intermediateBuffer[i * 4 + 3], qTable[i * 2 + 1]), _subtract))));
+            const __m128i clamped04 = _mm_shuffle_epi8(_mm_cvtps_epi32(_mm_min_ps(_0xFFf, _mm_max_ps(_mm_setzero_ps(), _mm_add_ps(_mm_mul_ps(intermediateBuffer[i * 4], qTable[i * 2]), _subtract)))), shuffleMask);
+            const __m128i clamped15 = _mm_shuffle_epi8(_mm_cvtps_epi32(_mm_min_ps(_0xFFf, _mm_max_ps(_mm_setzero_ps(), _mm_add_ps(_mm_mul_ps(intermediateBuffer[i * 4 + 1], qTable[i * 2 + 1]), _subtract)))), shuffleMask);
+            const __m128i clamped26 = _mm_shuffle_epi8(_mm_cvtps_epi32(_mm_min_ps(_0xFFf, _mm_max_ps(_mm_setzero_ps(), _mm_add_ps(_mm_mul_ps(intermediateBuffer[i * 4 + 2], qTable[i * 2]), _subtract)))), shuffleMask);
+            const __m128i clamped37 = _mm_shuffle_epi8(_mm_cvtps_epi32(_mm_min_ps(_0xFFf, _mm_max_ps(_mm_setzero_ps(), _mm_add_ps(_mm_mul_ps(intermediateBuffer[i * 4 + 3], qTable[i * 2 + 1]), _subtract)))), shuffleMask);
 
             // Store:
             // *pTo[i] = (uint8_t)intermediateBuffer[i];

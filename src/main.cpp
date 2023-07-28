@@ -240,7 +240,7 @@ int32_t main(int32_t argc, char **pArgv)
       _NsPerRun[run] = TicksToNs(endTick - startTick);
       _ClocksPerRun[run] = endClock - startClock;
 
-      printf("\r% 3" PRIu64 ": %6.3f clocks/byte, %5.2f MiB/s", run + 1, (endClock - startClock) / (double)fileSize, (fileSize / (1024.0 * 1024.0)) / (TicksToNs(endTick - startTick) * 1e-9));
+      printf("\r%3" PRIu64 ": %6.3f clocks/byte, %5.2f MiB/s", run + 1, (endClock - startClock) / (double)fileSize, (fileSize / (1024.0 * 1024.0)) / (TicksToNs(endTick - startTick) * 1e-9));
 
       if (_FAILED(result))
       {
@@ -268,7 +268,7 @@ int32_t main(int32_t argc, char **pArgv)
       _NsPerRun[run] = TicksToNs(endTick - startTick);
       _ClocksPerRun[run] = endClock - startClock;
 
-      printf("\r% 3" PRIu64 ": %6.3f clocks/byte, %5.2f MiB/s", run + 1, (endClock - startClock) / (double)fileSize, (fileSize / (1024.0 * 1024.0)) / (TicksToNs(endTick - startTick) * 1e-9));
+      printf("\r%3" PRIu64 ": %6.3f clocks/byte, %5.2f MiB/s", run + 1, (endClock - startClock) / (double)fileSize, (fileSize / (1024.0 * 1024.0)) / (TicksToNs(endTick - startTick) * 1e-9));
 
       if (_FAILED(result))
       {

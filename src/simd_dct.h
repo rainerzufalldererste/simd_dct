@@ -2,6 +2,7 @@
 #define simd_dct_h__
 
 #include <stdint.h>
+#include <stddef.h>
 
 #ifndef IN
 #define IN
