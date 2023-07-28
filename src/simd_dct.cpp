@@ -113,12 +113,12 @@ simdDctResult simdDCT_EncodeQuantize32ReorderBuffer(IN const uint8_t *pFrom, OUT
   simdDctResult result = sdr_Success;
 
   _ERROR_IF(pFrom == nullptr || pTo == nullptr, sdr_InvalidParameter);
-  _ERROR_IF((sizeX & ~7) != sizeX || (sizeY & ~7) != sizeY, sdr_NotSupported);
+  _ERROR_IF((sizeX & ~(64 - 1)) != sizeX || (sizeY & ~7) != sizeY, sdr_NotSupported);
 
   if (avx2Supported)
     simdDCT_EncodeQuantize32ReorderBuffer_AVX2_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
   //else
-  //  simdDCT_EncodeQuantizeBuffer_NoSimd_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
+  //  simdDCT_EncodeQuantize32ReorderBuffer_NoSimd_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
   //
   goto epilogue;
 
@@ -1866,28 +1866,29 @@ void simdDCT_EncodeQuantize32ReorderBuffer_AVX2_Float(IN const uint8_t *pFrom, O
 #ifndef _MSC_VER
     __attribute__((target("avx2")))
 #endif
-    static inline void encode_line(const size_t sizeX, IN const float *pQuantizeLUT, IN const uint8_t *pBlockStart, OUT uint8_t *pTo, const __m256 *pQTable)
+    static inline void encode_line(const size_t sizeX, IN const uint8_t *pBlockStart, OUT uint8_t *pTo, const __m256 *pQTable)
     {
-      constexpr float subtract = 127.0f;
+      constexpr int32_t _subtract = 127;
+      constexpr float _C_a = 1.3870398453221474618216191915664f;  // sqrt(2) * cos(1 * pi / 16)
+      constexpr float _C_b = 1.3065629648763765278566431734272f;  // sqrt(2) * cos(2 * pi / 16)
+      constexpr float _C_c = 1.1758756024193587169744671046113f;  // sqrt(2) * cos(3 * pi / 16)
+      constexpr float _C_d = 0.78569495838710218127789736765722f; // sqrt(2) * cos(5 * pi / 16)
+      constexpr float _C_e = 0.54119610014619698439972320536639f; // sqrt(2) * cos(6 * pi / 16)
+      constexpr float _C_f = 0.27589937928294301233595756366937f; // sqrt(2) * cos(7 * pi / 16)
+      constexpr float _C_norm = 0.35355339059327376220042218105242f; // 1 / sqrt(8)
 
-      _ALIGN(16) __m256i localBuffer[64];
+      const __m256 C_a = _mm256_set1_ps(_C_a);
+      const __m256 C_b = _mm256_set1_ps(_C_b);
+      const __m256 C_c = _mm256_set1_ps(_C_c);
+      const __m256 C_d = _mm256_set1_ps(_C_d);
+      const __m256 C_e = _mm256_set1_ps(_C_e);
+      const __m256 C_f = _mm256_set1_ps(_C_f);
+      const __m256 C_norm = _mm256_set1_ps(_C_norm);
 
-      (void)pQTable;
-      (void)pTo;
-      (void)pQuantizeLUT;
-      (void)subtract;
-      (void)localBuffer;
+      _ALIGN(16) __m256 localBuffer[64];
 
-      for (size_t x = 0; x < sizeX; x += 32)
+      for (size_t x = 0; x < sizeX; x += 8 * 8)
       {
-        for (size_t i = 0; i < 8; i++)
-        {
-          uint8_t *pV = const_cast<uint8_t *>(pBlockStart + sizeX * i);
-
-          for (size_t j = 0; j < 64; j++)
-            pV[j] = (uint8_t)(i * 64 + j);
-        }
-
         // Acquire blocks.
         {
           for (size_t i = 0; i < 8; i++)
@@ -1925,17 +1926,95 @@ void simdDCT_EncodeQuantize32ReorderBuffer_AVX2_Float(IN const uint8_t *pFrom, O
             const __m256i c6 = _mm256_unpacklo_epi64(b5, b7);
             const __m256i c7 = _mm256_unpackhi_epi64(b5, b7);
 
-            const __m256i d0 = _mm256_permute2x128_si256(c0, c4, 0b0100000);
-            const __m256i d1 = _mm256_permute2x128_si256(c1, c5, 0b0100000);
-            const __m256i d2 = _mm256_permute2x128_si256(c2, c6, 0b0100000);
-            const __m256i d3 = _mm256_permute2x128_si256(c3, c7, 0b0100000);
-            const __m256i d4 = _mm256_permute2x128_si256(c0, c4, 0b0110001);
-            const __m256i d5 = _mm256_permute2x128_si256(c1, c5, 0b0110001);
-            const __m256i d6 = _mm256_permute2x128_si256(c2, c6, 0b0110001);
-            const __m256i d7 = _mm256_permute2x128_si256(c3, c7, 0b0110001);
-
-            __debugbreak();
+            // NOT in order!
+            localBuffer[i * 8 + 0] = _mm256_cvtepi32_ps(_mm256_permute2x128_si256(c0, c4, 0b0100000));
+            localBuffer[i * 8 + 4] = _mm256_cvtepi32_ps(_mm256_permute2x128_si256(c0, c4, 0b0110001));
+            localBuffer[i * 8 + 1] = _mm256_cvtepi32_ps(_mm256_permute2x128_si256(c1, c5, 0b0100000));
+            localBuffer[i * 8 + 5] = _mm256_cvtepi32_ps(_mm256_permute2x128_si256(c1, c5, 0b0110001));
+            localBuffer[i * 8 + 2] = _mm256_cvtepi32_ps(_mm256_permute2x128_si256(c2, c6, 0b0100000));
+            localBuffer[i * 8 + 6] = _mm256_cvtepi32_ps(_mm256_permute2x128_si256(c2, c6, 0b0110001));
+            localBuffer[i * 8 + 3] = _mm256_cvtepi32_ps(_mm256_permute2x128_si256(c3, c7, 0b0100000));
+            localBuffer[i * 8 + 7] = _mm256_cvtepi32_ps(_mm256_permute2x128_si256(c3, c7, 0b0110001));
           }
+        }
+
+        pBlockStart += 64;
+
+        // Do the DCT8.
+        {
+          for (size_t i = 0; i < 8; i++)
+          {
+            const __m256 x07p = _mm256_add_ps(localBuffer[i * 8 + 0], localBuffer[i * 8 + 7]);
+            const __m256 x16p = _mm256_add_ps(localBuffer[i * 8 + 1], localBuffer[i * 8 + 6]);
+            const __m256 x25p = _mm256_add_ps(localBuffer[i * 8 + 2], localBuffer[i * 8 + 5]);
+            const __m256 x34p = _mm256_add_ps(localBuffer[i * 8 + 3], localBuffer[i * 8 + 4]);
+
+            const __m256 x07m = _mm256_sub_ps(localBuffer[i * 8 + 0], localBuffer[i * 8 + 7]);
+            const __m256 x61m = _mm256_sub_ps(localBuffer[i * 8 + 6], localBuffer[i * 8 + 1]);
+            const __m256 x25m = _mm256_sub_ps(localBuffer[i * 8 + 2], localBuffer[i * 8 + 5]);
+            const __m256 x43m = _mm256_sub_ps(localBuffer[i * 8 + 4], localBuffer[i * 8 + 3]);
+
+            const __m256 x07p34pp = _mm256_add_ps(x07p, x34p);
+            const __m256 x07p34pm = _mm256_sub_ps(x07p, x34p);
+            const __m256 x16p25pp = _mm256_add_ps(x16p, x25p);
+            const __m256 x16p25pm = _mm256_sub_ps(x16p, x25p);
+
+            // NOT in order!
+            localBuffer[i * 8 + 0] = _mm256_mul_ps(C_norm, _mm256_add_ps(x07p34pp, x16p25pp));
+            localBuffer[i * 8 + 4] = _mm256_mul_ps(C_norm, _mm256_sub_ps(x07p34pp, x16p25pp));
+            localBuffer[i * 8 + 2] = _mm256_mul_ps(C_norm, _mm256_add_ps(_mm256_mul_ps(C_b, x07p34pm), _mm256_mul_ps(C_e, x16p25pm)));
+            localBuffer[i * 8 + 6] = _mm256_mul_ps(C_norm, _mm256_sub_ps(_mm256_mul_ps(C_e, x07p34pm), _mm256_mul_ps(C_b, x16p25pm)));
+            localBuffer[i * 8 + 1] = _mm256_mul_ps(C_norm, _mm256_add_ps(_mm256_sub_ps(_mm256_mul_ps(C_a, x07m), _mm256_mul_ps(C_c, x61m)), _mm256_sub_ps(_mm256_mul_ps(C_d, x25m), _mm256_mul_ps(C_f, x43m))));
+            localBuffer[i * 8 + 3] = _mm256_mul_ps(C_norm, _mm256_sub_ps(_mm256_add_ps(_mm256_mul_ps(C_c, x07m), _mm256_mul_ps(C_f, x61m)), _mm256_add_ps(_mm256_mul_ps(C_a, x25m), _mm256_mul_ps(C_d, x43m))));
+            localBuffer[i * 8 + 5] = _mm256_mul_ps(C_norm, _mm256_add_ps(_mm256_add_ps(_mm256_mul_ps(C_d, x07m), _mm256_mul_ps(C_a, x61m)), _mm256_sub_ps(_mm256_mul_ps(C_f, x25m), _mm256_mul_ps(C_c, x43m))));
+            localBuffer[i * 8 + 7] = _mm256_mul_ps(C_norm, _mm256_add_ps(_mm256_add_ps(_mm256_mul_ps(C_f, x07m), _mm256_mul_ps(C_d, x61m)), _mm256_add_ps(_mm256_mul_ps(C_c, x25m), _mm256_mul_ps(C_a, x43m))));
+          }
+        }
+
+        // Do the DCT8 in the other direction.
+        {
+          for (size_t i = 0; i < 8; i++)
+          {
+            const __m256 x07p = _mm256_add_ps(localBuffer[i + 0 * 8], localBuffer[i + 7 * 8]);
+            const __m256 x16p = _mm256_add_ps(localBuffer[i + 1 * 8], localBuffer[i + 6 * 8]);
+            const __m256 x25p = _mm256_add_ps(localBuffer[i + 2 * 8], localBuffer[i + 5 * 8]);
+            const __m256 x34p = _mm256_add_ps(localBuffer[i + 3 * 8], localBuffer[i + 4 * 8]);
+
+            const __m256 x07m = _mm256_sub_ps(localBuffer[i + 0 * 8], localBuffer[i + 7 * 8]);
+            const __m256 x61m = _mm256_sub_ps(localBuffer[i + 6 * 8], localBuffer[i + 1 * 8]);
+            const __m256 x25m = _mm256_sub_ps(localBuffer[i + 2 * 8], localBuffer[i + 5 * 8]);
+            const __m256 x43m = _mm256_sub_ps(localBuffer[i + 4 * 8], localBuffer[i + 3 * 8]);
+
+            const __m256 x07p34pp = _mm256_add_ps(x07p, x34p);
+            const __m256 x07p34pm = _mm256_sub_ps(x07p, x34p);
+            const __m256 x16p25pp = _mm256_add_ps(x16p, x25p);
+            const __m256 x16p25pm = _mm256_sub_ps(x16p, x25p);
+
+            // NOT in order!
+            localBuffer[i + 0 * 8] = _mm256_mul_ps(C_norm, _mm256_add_ps(x07p34pp, x16p25pp));
+            localBuffer[i + 4 * 8] = _mm256_mul_ps(C_norm, _mm256_sub_ps(x07p34pp, x16p25pp));
+            localBuffer[i + 2 * 8] = _mm256_mul_ps(C_norm, _mm256_add_ps(_mm256_mul_ps(C_b, x07p34pm), _mm256_mul_ps(C_e, x16p25pm)));
+            localBuffer[i + 6 * 8] = _mm256_mul_ps(C_norm, _mm256_sub_ps(_mm256_mul_ps(C_e, x07p34pm), _mm256_mul_ps(C_b, x16p25pm)));
+            localBuffer[i + 1 * 8] = _mm256_mul_ps(C_norm, _mm256_add_ps(_mm256_sub_ps(_mm256_mul_ps(C_a, x07m), _mm256_mul_ps(C_c, x61m)), _mm256_sub_ps(_mm256_mul_ps(C_d, x25m), _mm256_mul_ps(C_f, x43m))));
+            localBuffer[i + 3 * 8] = _mm256_mul_ps(C_norm, _mm256_sub_ps(_mm256_add_ps(_mm256_mul_ps(C_c, x07m), _mm256_mul_ps(C_f, x61m)), _mm256_add_ps(_mm256_mul_ps(C_a, x25m), _mm256_mul_ps(C_d, x43m))));
+            localBuffer[i + 5 * 8] = _mm256_mul_ps(C_norm, _mm256_add_ps(_mm256_add_ps(_mm256_mul_ps(C_d, x07m), _mm256_mul_ps(C_a, x61m)), _mm256_sub_ps(_mm256_mul_ps(C_f, x25m), _mm256_mul_ps(C_c, x43m))));
+            localBuffer[i + 7 * 8] = _mm256_mul_ps(C_norm, _mm256_add_ps(_mm256_add_ps(_mm256_mul_ps(C_f, x07m), _mm256_mul_ps(C_d, x61m)), _mm256_add_ps(_mm256_mul_ps(C_c, x25m), _mm256_mul_ps(C_a, x43m))));
+          }
+        }
+
+        // Convert & Store.
+        {
+          const __m256i _0xFF = _mm256_set1_epi32(0xFF);
+          const __m256i _127 = _mm256_set1_epi32(_subtract);
+          const __m256i _zero = _mm256_setzero_si256();
+
+          for (size_t i = 0; i < 64; i++)
+          {
+            const __m256 quantizeVal = _mm256_load_ps(reinterpret_cast<const float *>(pQTable + i));
+            *(reinterpret_cast<uint64_t *>(pTo) + i) = _mm_extract_epi64(_mm256_cvtepi32_epi8(_mm256_max_epi32(_mm256_min_epi32(_mm256_add_epi32(_127, _mm256_cvtps_epi32(_mm256_mul_ps(localBuffer[i], quantizeVal))), _0xFF), _zero)), 0);
+          }
+
+          pTo += 64 * sizeof(uint64_t);
         }
       }
     }
@@ -1962,7 +2041,7 @@ void simdDCT_EncodeQuantize32ReorderBuffer_AVX2_Float(IN const uint8_t *pFrom, O
       break;
     }
 
-    internal::encode_line(sizeX, pQuantizeLUT, pLine, pTo, qTable);
+    internal::encode_line(sizeX, pLine, pTo, qTable);
 
     pLine += 8 * sizeX;
     pTo += 8 * sizeX;

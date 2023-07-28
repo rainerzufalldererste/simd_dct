@@ -17,7 +17,7 @@
 
 //////////////////////////////////////////////////////////////////////////
 
-size_t _RunCount = 1;
+size_t _RunCount = 32;
 
 constexpr size_t MaxRunCount = 256;
 static uint64_t _ClocksPerRun[MaxRunCount];
