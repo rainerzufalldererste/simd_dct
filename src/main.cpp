@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <math.h>
+#include <string.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -80,11 +81,35 @@ void print_perf_info(const size_t fileSize)
 
 //////////////////////////////////////////////////////////////////////////
 
+const char ArgumentOutFileName[] = "--to";
+const char ArgumentQuality[] = "--quality";
+const char ArgumentCpuCore[] = "--cpu-core";
+const char ArgumentRuns[] = "--runs";
+const char ArgumentMaxSimd[] = "--max-simd";
+const char ArgumentMaxSimdAVX512BW[] = "avx512bw";
+const char ArgumentMaxSimdAVX512F[] = "avx512f";
+const char ArgumentMaxSimdAVX2[] = "avx2";
+const char ArgumentMaxSimdAVX[] = "avx";
+const char ArgumentMaxSimdSSE42[] = "sse4.2";
+const char ArgumentMaxSimdSSE41[] = "sse4.1";
+const char ArgumentMaxSimdSSSE3[] = "ssse3";
+const char ArgumentMaxSimdSSE3[] = "sse3";
+const char ArgumentMaxSimdSSE2[] = "sse2";
+const char ArgumentMaxSimdNone[] = "none";
+
+//////////////////////////////////////////////////////////////////////////
+
 int32_t main(int32_t argc, char **pArgv)
 {
   if (argc < 4)
   {
-    puts("Invalid Parameter.\n\nUsage: simd_dct <raw_grayscale_image_file> <resolutionX> <resolutionY> [quality_level [out_file_name]]");
+    puts("Invalid Parameter.\n\nUsage: simd_dct <raw_grayscale_image_file> <resolutionX> <resolutionY>");
+
+    printf("\t%s <file_name>\t\tStore the last output in the specified file.\n", ArgumentOutFileName);
+    printf("\t%s <quality (0-100)>\t\tQuantization Quality Level.\n", ArgumentQuality);
+    printf("\t%s <uint>\t\tRun the benchmark for a specified amount of times.\n", ArgumentRuns);
+    printf("\t%s <%s / %s / %s / %s / %s / %s / %s / %s / %s / %s>\n\t\t\t\tRestrict SIMD functions to specific instruction set\n", ArgumentMaxSimd, ArgumentMaxSimdAVX512BW, ArgumentMaxSimdAVX512F, ArgumentMaxSimdAVX2, ArgumentMaxSimdAVX, ArgumentMaxSimdSSE42, ArgumentMaxSimdSSE41, ArgumentMaxSimdSSSE3, ArgumentMaxSimdSSE3, ArgumentMaxSimdSSE2, ArgumentMaxSimdNone);
+    
     return 1;
   }
 
@@ -158,14 +183,224 @@ int32_t main(int32_t argc, char **pArgv)
     .72f, .92f, .95f, .98f, 1.12f, 1.00f, 1.03f,  .99f
   };
 
-  if (argc == 5)
-    qualityLevel = (float)strtoull(pArgv[4], nullptr, 10);
+  size_t argIndex = 4;
+  size_t argsRemaining = (size_t)argc - 4;
 
-  for (size_t i = 0; i < 64; i++)
-    quantizeBase[i] *= qualityLevel;
+  while (argsRemaining)
+  {
+    if (argsRemaining >= 2 && strncmp(pArgv[argIndex], ArgumentQuality, sizeof(ArgumentQuality)) == 0)
+    {
+      argIndex += 2;
+      argsRemaining -= 2;
 
-  if (argc == 6)
-    outFilename = pArgv[5];
+      qualityLevel = (float)strtoull(pArgv[argIndex - 1], nullptr, 10);
+
+      for (size_t i = 0; i < 64; i++)
+        quantizeBase[i] *= qualityLevel;
+    }
+    else if (argsRemaining >= 2 && strncmp(pArgv[argIndex], ArgumentOutFileName, sizeof(ArgumentOutFileName)) == 0)
+    {
+      argIndex += 2;
+      argsRemaining -= 2;
+
+      outFilename = pArgv[argIndex - 1];
+    }
+    else if (argsRemaining >= 2 && strncmp(pArgv[argIndex], ArgumentRuns, sizeof(ArgumentRuns)) == 0)
+    {
+      _RunCount = strtoull(pArgv[argIndex + 1], nullptr, 10);
+
+      if (_RunCount > MaxRunCount)
+      {
+        puts("Invalid Parameter.");
+        return 1;
+      }
+
+      argIndex += 2;
+      argsRemaining -= 2;
+    }
+    else if (argsRemaining >= 2 && strncmp(pArgv[argIndex], ArgumentCpuCore, sizeof(ArgumentCpuCore)) == 0)
+    {
+      // For more consistent benchmarking results.
+      const size_t cpuCoreIndex = strtoull(pArgv[argIndex + 1], nullptr, 10);
+
+      argIndex += 2;
+      argsRemaining -= 2;
+
+#ifdef _WIN32
+      HANDLE thread = GetCurrentThread();
+      SetThreadPriority(thread, THREAD_PRIORITY_HIGHEST);
+      SetThreadAffinityMask(thread, (uint64_t)1 << cpuCoreIndex);
+#else
+      cpu_set_t cpuset;
+      CPU_ZERO(&cpuset);
+      CPU_SET((int32_t)cpuCoreIndex, &cpuset);
+
+      pthread_t current_thread = pthread_self();
+      pthread_setaffinity_np(current_thread, sizeof(cpu_set_t), &cpuset);
+#endif
+    }
+    else if (argsRemaining >= 2 && strncmp(pArgv[argIndex], ArgumentMaxSimd, sizeof(ArgumentMaxSimd)) == 0)
+    {
+      _DetectCPUFeatures();
+
+      do
+      {
+        if (strncmp(pArgv[argIndex + 1], ArgumentMaxSimdAVX512BW, sizeof(ArgumentMaxSimdAVX512BW)) == 0)
+        {
+          if (!avx512BWSupported)
+          {
+            puts("AVX512BW is not supported by this platform. Aborting.");
+            return 1;
+          }
+
+          // In future versions with other simd flavours better than avx512 supported, disable them here.
+
+          break;
+        }
+
+        avx512PFSupported = false;
+        avx512ERSupported = false;
+        avx512CDSupported = false;
+        avx512BWSupported = false;
+        avx512DQSupported = false;
+        avx512VLSupported = false;
+        avx512IFMASupported = false;
+        avx512VBMISupported = false;
+        avx512VNNISupported = false;
+        avx512VBMI2Supported = false;
+        avx512POPCNTDQSupported = false;
+        avx512BITALGSupported = false;
+        avx5124VNNIWSupported = false;
+        avx5124FMAPSSupported = false;
+
+        if (strncmp(pArgv[argIndex + 1], ArgumentMaxSimdAVX512F, sizeof(ArgumentMaxSimdAVX512F)) == 0)
+        {
+          if (!avx512FSupported)
+          {
+            puts("AVX512F is not supported by this platform. Aborting.");
+            return 1;
+          }
+
+          // In future versions with other simd flavours better than avx512 supported, disable them here.
+
+          break;
+        }
+
+        avx512FSupported = false;
+
+        if (strncmp(pArgv[argIndex + 1], ArgumentMaxSimdAVX2, sizeof(ArgumentMaxSimdAVX2)) == 0)
+        {
+          if (!avx2Supported)
+          {
+            puts("AVX2 is not supported by this platform. Aborting.");
+            return 1;
+          }
+
+          break;
+        }
+
+        avx2Supported = false;
+        fma3Supported = false;
+
+        if (strncmp(pArgv[argIndex + 1], ArgumentMaxSimdAVX, sizeof(ArgumentMaxSimdAVX)) == 0)
+        {
+          if (!avxSupported)
+          {
+            puts("AVX is not supported by this platform. Aborting.");
+            return 1;
+          }
+
+          break;
+        }
+
+        avxSupported = false;
+
+        if (strncmp(pArgv[argIndex + 1], ArgumentMaxSimdSSE42, sizeof(ArgumentMaxSimdSSE42)) == 0)
+        {
+          if (!sse42Supported)
+          {
+            puts("SSE4.2 is not supported by this platform. Aborting.");
+            return 1;
+          }
+
+          break;
+        }
+
+        sse42Supported = false;
+
+        if (strncmp(pArgv[argIndex + 1], ArgumentMaxSimdSSE41, sizeof(ArgumentMaxSimdSSE41)) == 0)
+        {
+          if (!sse41Supported)
+          {
+            puts("SSE4.1 is not supported by this platform. Aborting.");
+            return 1;
+          }
+
+          break;
+        }
+
+        sse41Supported = false;
+
+        if (strncmp(pArgv[argIndex + 1], ArgumentMaxSimdSSSE3, sizeof(ArgumentMaxSimdSSSE3)) == 0)
+        {
+          if (!ssse3Supported)
+          {
+            puts("SSSE3 is not supported by this platform. Aborting.");
+            return 1;
+          }
+
+          break;
+        }
+
+        ssse3Supported = false;
+
+        if (strncmp(pArgv[argIndex + 1], ArgumentMaxSimdSSE3, sizeof(ArgumentMaxSimdSSE3)) == 0)
+        {
+          if (!sse3Supported)
+          {
+            puts("SSE3 is not supported by this platform. Aborting.");
+            return 1;
+          }
+
+          break;
+        }
+
+        sse3Supported = false;
+
+        if (strncmp(pArgv[argIndex + 1], ArgumentMaxSimdSSE2, sizeof(ArgumentMaxSimdSSE2)) == 0)
+        {
+          if (!sse2Supported)
+          {
+            puts("SSE2 is not supported by this platform. Aborting.");
+            return 1;
+          }
+
+          break;
+        }
+
+        sse2Supported = false;
+
+        if (strncmp(pArgv[argIndex + 1], ArgumentMaxSimdNone, sizeof(ArgumentMaxSimdNone)) == 0)
+        {
+          printf("%s %s is only intended for testing purposes and will only restrict some codecs to no SIMD\n", ArgumentMaxSimd, ArgumentMaxSimdNone);
+
+          break;
+        }
+
+        printf("Invalid SIMD Variant '%s' specified.", pArgv[argIndex + 1]);
+        return 1;
+
+      } while (false);
+
+      argIndex += 2;
+      argsRemaining -= 2;
+    }
+    else
+    {
+      printf("Invalid Parameter '%s'. Aborting.", pArgv[argIndex]);
+      return 1;
+    }
+  }
 
   _DetectCPUFeatures();
 

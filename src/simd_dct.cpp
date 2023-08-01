@@ -118,11 +118,12 @@ simdDctResult simdDCT_EncodeQuantize32ReorderBuffer(IN const uint8_t *pFrom, OUT
 
   if (avx512VLSupported)
     simdDCT_EncodeQuantize32ReorderBuffer_AVX512VL_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
-  else if (avx2Supported)
-    simdDCT_EncodeQuantize32ReorderBuffer_AVX2_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
-  //else
-  //  simdDCT_EncodeQuantize32ReorderBuffer_NoSimd_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
-  //
+  else
+    if (avx2Supported)
+      simdDCT_EncodeQuantize32ReorderBuffer_AVX2_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
+    else
+      return sdr_NotSupported; // simdDCT_EncodeQuantize32ReorderBuffer_NoSimd_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
+  
   goto epilogue;
 
 epilogue:
@@ -2086,6 +2087,15 @@ void simdDCT_EncodeQuantize32ReorderBuffer_AVX2_Float(IN const uint8_t *pFrom, O
       const __m256 C_f = _mm256_set1_ps(_C_f);
       const __m256 C_norm = _mm256_set1_ps(_C_norm);
 
+      const __m256i _0xFF = _mm256_set1_epi32(0xFF);
+      const __m256i _127 = _mm256_set1_epi32(_subtract);
+      const __m256i _zero = _mm256_setzero_si256();
+
+#define _ -1
+      const __m256i _shuffleMask = _mm256_set_epi8(_, _, _, _, _, _, _, _, _, _, _, _, 12, 8, 4, 0, _, _, _, _, _, _, _, _, _, _, _, _, 12, 8, 4, 0);
+#undef _
+      const __m256i _permIdx = _mm256_set_epi32(0, 0, 0, 0, 0, 0, 4, 0);
+
       _ALIGN(16) __m256 localBuffer[64];
 
       for (size_t x = 0; x < sizeX; x += 8 * 8)
@@ -2205,15 +2215,6 @@ void simdDCT_EncodeQuantize32ReorderBuffer_AVX2_Float(IN const uint8_t *pFrom, O
 
         // Convert & Store.
         {
-          const __m256i _0xFF = _mm256_set1_epi32(0xFF);
-          const __m256i _127 = _mm256_set1_epi32(_subtract);
-          const __m256i _zero = _mm256_setzero_si256();
-
-#define _ -1
-          const __m256i _shuffleMask = _mm256_set_epi8(_, _, _, _, _, _, _, _, _, _, _, _, 12, 8, 4, 0, _, _, _, _, _, _, _, _, _, _, _, _, 12, 8, 4, 0);
-#undef _
-          const __m256i _permIdx = _mm256_set_epi32(0, 0, 0, 0, 0, 0, 4, 0);
-
           // This is faster than `_mm_unpacklo_epi64` + `_mm_storeu_epi64`.
           for (size_t i = 0; i < 64; i++)
           {
