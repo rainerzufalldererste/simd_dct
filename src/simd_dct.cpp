@@ -1125,7 +1125,7 @@ void simdDCT_EncodeQuantizeReorderStereoBuffer_SSE2_Float(IN const uint8_t *pFro
       return ret;
     }
 
-      static inline void encode_line(const size_t sizeX, IN const float *pQuantizeLUT, IN const uint8_t *pBlockStart, IN_OUT uint16_t *pOutPositions[64])
+    static inline void encode_line(const size_t sizeX, IN const float *pQuantizeLUT, IN const uint8_t *pBlockStart, IN_OUT uint16_t *pOutPositions[64])
     {
       constexpr float vr = .95f;
       constexpr float subtract = 127.0f;
@@ -2490,7 +2490,6 @@ void simdDCT_EncodeQuantize32ReorderBuffer_SSE41_Float(IN const uint8_t *pFrom, 
         
         // Convert & Store.
         {
-          // This is faster than `_mm_unpacklo_epi64` + `_mm_storeu_epi64`.
           for (size_t i = 0; i < 64; i++)
           {
             const __m128 quantizeVal = _mm_load_ps(reinterpret_cast<const float *>(pQTable + i));
@@ -2505,7 +2504,7 @@ void simdDCT_EncodeQuantize32ReorderBuffer_SSE41_Float(IN const uint8_t *pFrom, 
             *(reinterpret_cast<uint32_t *>(pTo) + i * 2 + 1) = _mm_extract_epi32(low8_1, 0);
           }
         
-          pTo += 64 * sizeof(uint64_t);
+          pTo += 64 * sizeof(uint32_t) * 2;
         }
       }
     }
