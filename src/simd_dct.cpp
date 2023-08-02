@@ -66,6 +66,8 @@ void simdDCT_EncodeQuantize32ReorderBuffer_AVX512VL_Float(IN const uint8_t *pFro
 void simdDCT_EncodeQuantize32ReorderBuffer_AVX2_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY);
 void simdDCT_EncodeQuantize32ReorderBuffer_SSE41_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY);
 
+void simdDCT_EncodeQuantize64ReorderBuffer_AVX512_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY);
+
 //////////////////////////////////////////////////////////////////////////
 
 simdDctResult simdDCT_EncodeQuantizeReorderStereoBuffer(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY)
@@ -123,6 +125,24 @@ simdDctResult simdDCT_EncodeQuantize32ReorderBuffer(IN const uint8_t *pFrom, OUT
     simdDCT_EncodeQuantize32ReorderBuffer_AVX2_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
   else if (sse41Supported)
     simdDCT_EncodeQuantize32ReorderBuffer_SSE41_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
+  else
+    return sdr_NotSupported; // simdDCT_EncodeQuantize32ReorderBuffer_NoSimd_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
+
+  goto epilogue;
+
+epilogue:
+  return result;
+}
+
+simdDctResult simdDCT_EncodeQuantize64ReorderBuffer(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY)
+{
+  simdDctResult result = sdr_Success;
+
+  _ERROR_IF(pFrom == nullptr || pTo == nullptr, sdr_InvalidParameter);
+  _ERROR_IF((sizeX & ~(64 - 1)) != sizeX || (sizeY & ~7) != sizeY, sdr_NotSupported);
+
+  if (avx512VLSupported)
+    simdDCT_EncodeQuantize64ReorderBuffer_AVX512_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
   else
     return sdr_NotSupported; // simdDCT_EncodeQuantize32ReorderBuffer_NoSimd_Float(pFrom, pTo, pQuantizeLUT, sizeX, sizeY, startY, endY);
 
@@ -2514,6 +2534,200 @@ void simdDCT_EncodeQuantize32ReorderBuffer_SSE41_Float(IN const uint8_t *pFrom, 
 
   for (size_t i = 0; i < 64; i++)
     qTable[i] = _mm_set1_ps(255.0f / (pQuantizeLUT[i] * vr));
+
+  const uint8_t *pLine = pFrom;
+
+  for (size_t y = 0; y < sizeY / 2; y += 8)
+  {
+    if (y * 2 < startY)
+    {
+      pLine += 8 * sizeX;
+      pTo += 8 * sizeX;
+
+      continue;
+    }
+    else if (y * 2 > endY)
+    {
+      break;
+    }
+
+    internal::encode_line(sizeX, pLine, pTo, qTable);
+
+    pLine += 8 * sizeX;
+    pTo += 8 * sizeX;
+  }
+}
+
+#ifndef _MSC_VER
+__attribute__((target("avx512vl")))
+#endif
+void simdDCT_EncodeQuantize64ReorderBuffer_AVX512_Float(IN const uint8_t *pFrom, OUT uint8_t *pTo, IN const float *pQuantizeLUT, const size_t sizeX, const size_t sizeY, const size_t startY, const size_t endY)
+{
+  constexpr float vr = .95f;
+
+  struct internal
+  {
+#ifndef _MSC_VER
+    __attribute__((target("avx512vl")))
+#endif
+      static inline void encode_line(const size_t sizeX, IN const uint8_t *pBlockStart, OUT uint8_t *pTo, const __m512 *pQTable)
+    {
+      constexpr int32_t _subtract = 127;
+      constexpr float _C_a = 1.3870398453221474618216191915664f;  // sqrt(2) * cos(1 * pi / 16)
+      constexpr float _C_b = 1.3065629648763765278566431734272f;  // sqrt(2) * cos(2 * pi / 16)
+      constexpr float _C_c = 1.1758756024193587169744671046113f;  // sqrt(2) * cos(3 * pi / 16)
+      constexpr float _C_d = 0.78569495838710218127789736765722f; // sqrt(2) * cos(5 * pi / 16)
+      constexpr float _C_e = 0.54119610014619698439972320536639f; // sqrt(2) * cos(6 * pi / 16)
+      constexpr float _C_f = 0.27589937928294301233595756366937f; // sqrt(2) * cos(7 * pi / 16)
+      constexpr float _C_norm = 0.35355339059327376220042218105242f; // 1 / sqrt(8)
+
+      const __m512 C_a = _mm512_set1_ps(_C_a);
+      const __m512 C_b = _mm512_set1_ps(_C_b);
+      const __m512 C_c = _mm512_set1_ps(_C_c);
+      const __m512 C_d = _mm512_set1_ps(_C_d);
+      const __m512 C_e = _mm512_set1_ps(_C_e);
+      const __m512 C_f = _mm512_set1_ps(_C_f);
+      const __m512 C_norm = _mm512_set1_ps(_C_norm);
+
+      const __m512i idxLo = _mm512_set_epi64(1, 1, 0, 0, 1, 1, 0, 0);
+      const __m512i idxHi = _mm512_set_epi64(0, 0, 1, 1, 0, 0, 1, 1);
+
+      _ALIGN(16) __m512 localBuffer[64];
+
+      for (size_t x = 0; x < sizeX; x += 8 * 16)
+      {
+        // Acquire blocks.
+        {
+          for (size_t i = 0; i < 8; i++)
+          {
+            const __m512i v0 = _mm512_loadu_si512(reinterpret_cast<const __m512i *>(pBlockStart + sizeX * i));
+            const __m512i v1 = _mm512_loadu_si512(reinterpret_cast<const __m512i *>(pBlockStart + sizeX * i + 64));
+
+            const __m512i a0 = _mm512_cvtepu8_epi32(_mm512_castsi512_si128(v0));
+            const __m512i a1 = _mm512_cvtepu8_epi32(_mm512_extracti32x4_epi32(v0, 1));
+            const __m512i a2 = _mm512_cvtepu8_epi32(_mm512_extracti32x4_epi32(v0, 2));
+            const __m512i a3 = _mm512_cvtepu8_epi32(_mm512_extracti32x4_epi32(v0, 3));
+            const __m512i a4 = _mm512_cvtepu8_epi32(_mm512_castsi512_si128(v1));
+            const __m512i a5 = _mm512_cvtepu8_epi32(_mm512_extracti32x4_epi32(v1, 1));
+            const __m512i a6 = _mm512_cvtepu8_epi32(_mm512_extracti32x4_epi32(v1, 2));
+            const __m512i a7 = _mm512_cvtepu8_epi32(_mm512_extracti32x4_epi32(v1, 3));
+
+            const __m512i b0 = _mm512_unpacklo_epi32(a0, a1);
+            const __m512i b1 = _mm512_unpackhi_epi32(a0, a1);
+            const __m512i b2 = _mm512_unpacklo_epi32(a2, a3);
+            const __m512i b3 = _mm512_unpackhi_epi32(a2, a3);
+            const __m512i b4 = _mm512_unpacklo_epi32(a4, a5);
+            const __m512i b5 = _mm512_unpackhi_epi32(a4, a5);
+            const __m512i b6 = _mm512_unpacklo_epi32(a6, a7);
+            const __m512i b7 = _mm512_unpackhi_epi32(a6, a7);
+
+            const __m512i c0 = _mm512_unpacklo_epi64(b0, b2);
+            const __m512i c1 = _mm512_unpackhi_epi64(b0, b2);
+            const __m512i c2 = _mm512_unpacklo_epi64(b1, b3);
+            const __m512i c3 = _mm512_unpackhi_epi64(b1, b3);
+            const __m512i c4 = _mm512_unpacklo_epi64(b4, b6);
+            const __m512i c5 = _mm512_unpackhi_epi64(b4, b6);
+            const __m512i c6 = _mm512_unpacklo_epi64(b5, b7);
+            const __m512i c7 = _mm512_unpackhi_epi64(b5, b7);
+
+            // NOT in order!
+            localBuffer[i * 8 + 0] = _mm512_cvtepi32_ps(_mm512_permutex2var_epi64(c0, idxLo, c4));
+            localBuffer[i * 8 + 4] = _mm512_cvtepi32_ps(_mm512_permutex2var_epi64(c0, idxHi, c4));
+            localBuffer[i * 8 + 1] = _mm512_cvtepi32_ps(_mm512_permutex2var_epi64(c1, idxLo, c5));
+            localBuffer[i * 8 + 5] = _mm512_cvtepi32_ps(_mm512_permutex2var_epi64(c1, idxHi, c5));
+            localBuffer[i * 8 + 2] = _mm512_cvtepi32_ps(_mm512_permutex2var_epi64(c2, idxLo, c6));
+            localBuffer[i * 8 + 6] = _mm512_cvtepi32_ps(_mm512_permutex2var_epi64(c2, idxHi, c6));
+            localBuffer[i * 8 + 3] = _mm512_cvtepi32_ps(_mm512_permutex2var_epi64(c3, idxLo, c7));
+            localBuffer[i * 8 + 7] = _mm512_cvtepi32_ps(_mm512_permutex2var_epi64(c3, idxHi, c7));
+          }
+        }
+
+        pBlockStart += 64;
+
+        // Do the DCT8.
+        {
+          for (size_t i = 0; i < 8; i++)
+          {
+            const __m512 x07p = _mm512_add_ps(localBuffer[i * 8 + 0], localBuffer[i * 8 + 7]);
+            const __m512 x16p = _mm512_add_ps(localBuffer[i * 8 + 1], localBuffer[i * 8 + 6]);
+            const __m512 x25p = _mm512_add_ps(localBuffer[i * 8 + 2], localBuffer[i * 8 + 5]);
+            const __m512 x34p = _mm512_add_ps(localBuffer[i * 8 + 3], localBuffer[i * 8 + 4]);
+
+            const __m512 x07m = _mm512_sub_ps(localBuffer[i * 8 + 0], localBuffer[i * 8 + 7]);
+            const __m512 x61m = _mm512_sub_ps(localBuffer[i * 8 + 6], localBuffer[i * 8 + 1]);
+            const __m512 x25m = _mm512_sub_ps(localBuffer[i * 8 + 2], localBuffer[i * 8 + 5]);
+            const __m512 x43m = _mm512_sub_ps(localBuffer[i * 8 + 4], localBuffer[i * 8 + 3]);
+
+            const __m512 x07p34pp = _mm512_add_ps(x07p, x34p);
+            const __m512 x07p34pm = _mm512_sub_ps(x07p, x34p);
+            const __m512 x16p25pp = _mm512_add_ps(x16p, x25p);
+            const __m512 x16p25pm = _mm512_sub_ps(x16p, x25p);
+
+            // NOT in order!
+            localBuffer[i * 8 + 0] = _mm512_mul_ps(C_norm, _mm512_add_ps(x07p34pp, x16p25pp));
+            localBuffer[i * 8 + 4] = _mm512_mul_ps(C_norm, _mm512_sub_ps(x07p34pp, x16p25pp));
+            localBuffer[i * 8 + 2] = _mm512_mul_ps(C_norm, _mm512_add_ps(_mm512_mul_ps(C_b, x07p34pm), _mm512_mul_ps(C_e, x16p25pm)));
+            localBuffer[i * 8 + 6] = _mm512_mul_ps(C_norm, _mm512_sub_ps(_mm512_mul_ps(C_e, x07p34pm), _mm512_mul_ps(C_b, x16p25pm)));
+            localBuffer[i * 8 + 1] = _mm512_mul_ps(C_norm, _mm512_add_ps(_mm512_sub_ps(_mm512_mul_ps(C_a, x07m), _mm512_mul_ps(C_c, x61m)), _mm512_sub_ps(_mm512_mul_ps(C_d, x25m), _mm512_mul_ps(C_f, x43m))));
+            localBuffer[i * 8 + 3] = _mm512_mul_ps(C_norm, _mm512_sub_ps(_mm512_add_ps(_mm512_mul_ps(C_c, x07m), _mm512_mul_ps(C_f, x61m)), _mm512_add_ps(_mm512_mul_ps(C_a, x25m), _mm512_mul_ps(C_d, x43m))));
+            localBuffer[i * 8 + 5] = _mm512_mul_ps(C_norm, _mm512_add_ps(_mm512_add_ps(_mm512_mul_ps(C_d, x07m), _mm512_mul_ps(C_a, x61m)), _mm512_sub_ps(_mm512_mul_ps(C_f, x25m), _mm512_mul_ps(C_c, x43m))));
+            localBuffer[i * 8 + 7] = _mm512_mul_ps(C_norm, _mm512_add_ps(_mm512_add_ps(_mm512_mul_ps(C_f, x07m), _mm512_mul_ps(C_d, x61m)), _mm512_add_ps(_mm512_mul_ps(C_c, x25m), _mm512_mul_ps(C_a, x43m))));
+          }
+        }
+
+        // Do the DCT8 in the other direction.
+        {
+          for (size_t i = 0; i < 8; i++)
+          {
+            const __m512 x07p = _mm512_add_ps(localBuffer[i + 0 * 8], localBuffer[i + 7 * 8]);
+            const __m512 x16p = _mm512_add_ps(localBuffer[i + 1 * 8], localBuffer[i + 6 * 8]);
+            const __m512 x25p = _mm512_add_ps(localBuffer[i + 2 * 8], localBuffer[i + 5 * 8]);
+            const __m512 x34p = _mm512_add_ps(localBuffer[i + 3 * 8], localBuffer[i + 4 * 8]);
+
+            const __m512 x07m = _mm512_sub_ps(localBuffer[i + 0 * 8], localBuffer[i + 7 * 8]);
+            const __m512 x61m = _mm512_sub_ps(localBuffer[i + 6 * 8], localBuffer[i + 1 * 8]);
+            const __m512 x25m = _mm512_sub_ps(localBuffer[i + 2 * 8], localBuffer[i + 5 * 8]);
+            const __m512 x43m = _mm512_sub_ps(localBuffer[i + 4 * 8], localBuffer[i + 3 * 8]);
+
+            const __m512 x07p34pp = _mm512_add_ps(x07p, x34p);
+            const __m512 x07p34pm = _mm512_sub_ps(x07p, x34p);
+            const __m512 x16p25pp = _mm512_add_ps(x16p, x25p);
+            const __m512 x16p25pm = _mm512_sub_ps(x16p, x25p);
+
+            // NOT in order!
+            localBuffer[i + 0 * 8] = _mm512_mul_ps(C_norm, _mm512_add_ps(x07p34pp, x16p25pp));
+            localBuffer[i + 4 * 8] = _mm512_mul_ps(C_norm, _mm512_sub_ps(x07p34pp, x16p25pp));
+            localBuffer[i + 2 * 8] = _mm512_mul_ps(C_norm, _mm512_add_ps(_mm512_mul_ps(C_b, x07p34pm), _mm512_mul_ps(C_e, x16p25pm)));
+            localBuffer[i + 6 * 8] = _mm512_mul_ps(C_norm, _mm512_sub_ps(_mm512_mul_ps(C_e, x07p34pm), _mm512_mul_ps(C_b, x16p25pm)));
+            localBuffer[i + 1 * 8] = _mm512_mul_ps(C_norm, _mm512_add_ps(_mm512_sub_ps(_mm512_mul_ps(C_a, x07m), _mm512_mul_ps(C_c, x61m)), _mm512_sub_ps(_mm512_mul_ps(C_d, x25m), _mm512_mul_ps(C_f, x43m))));
+            localBuffer[i + 3 * 8] = _mm512_mul_ps(C_norm, _mm512_sub_ps(_mm512_add_ps(_mm512_mul_ps(C_c, x07m), _mm512_mul_ps(C_f, x61m)), _mm512_add_ps(_mm512_mul_ps(C_a, x25m), _mm512_mul_ps(C_d, x43m))));
+            localBuffer[i + 5 * 8] = _mm512_mul_ps(C_norm, _mm512_add_ps(_mm512_add_ps(_mm512_mul_ps(C_d, x07m), _mm512_mul_ps(C_a, x61m)), _mm512_sub_ps(_mm512_mul_ps(C_f, x25m), _mm512_mul_ps(C_c, x43m))));
+            localBuffer[i + 7 * 8] = _mm512_mul_ps(C_norm, _mm512_add_ps(_mm512_add_ps(_mm512_mul_ps(C_f, x07m), _mm512_mul_ps(C_d, x61m)), _mm512_add_ps(_mm512_mul_ps(C_c, x25m), _mm512_mul_ps(C_a, x43m))));
+          }
+        }
+
+        // Convert & Store.
+        {
+          const __m512i _0xFF = _mm512_set1_epi32(0xFF);
+          const __m512i _127 = _mm512_set1_epi32(_subtract);
+          const __m512i _zero = _mm512_setzero_si512();
+
+          for (size_t i = 0; i < 64; i++)
+          {
+            const __m512 quantizeVal = _mm512_load_ps(reinterpret_cast<const float *>(pQTable + i));
+            _mm_storeu_si128((reinterpret_cast<__m128i *>(pTo) + i), _mm512_cvtepi32_epi8(_mm512_max_epi32(_mm512_min_epi32(_mm512_add_epi32(_127, _mm512_cvtps_epi32(_mm512_mul_ps(localBuffer[i], quantizeVal))), _0xFF), _zero)));
+          }
+
+          pTo += 64 * sizeof(__m128i);
+        }
+      }
+    }
+  };
+
+  _ALIGN(16) __m512 qTable[64];
+
+  for (size_t i = 0; i < 64; i++)
+    qTable[i] = _mm512_set1_ps(255.0f / (pQuantizeLUT[i] * vr));
 
   const uint8_t *pLine = pFrom;
 
