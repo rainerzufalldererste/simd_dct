@@ -18,7 +18,7 @@
 
 //////////////////////////////////////////////////////////////////////////
 
-size_t _RunCount = 1024;
+size_t _RunCount = 128;
 
 constexpr size_t MaxRunCount = 1024;
 static uint64_t _ClocksPerRun[MaxRunCount];
@@ -96,6 +96,10 @@ const char ArgumentMaxSimdSSSE3[] = "ssse3";
 const char ArgumentMaxSimdSSE3[] = "sse3";
 const char ArgumentMaxSimdSSE2[] = "sse2";
 const char ArgumentMaxSimdNone[] = "none";
+const char ArgumentMode[] = "--mode";
+const char ArgumentModeEncQuant[] = "enc-quant";
+const char ArgumentModeEncQuant32[] = "enc-quant32";
+const char ArgumentModeEncQuantStereo[] = "enc-quant-stereo";
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -109,6 +113,7 @@ int32_t main(int32_t argc, char **pArgv)
     printf("\t%s <quality (0-100)>\t\tQuantization Quality Level.\n", ArgumentQuality);
     printf("\t%s <uint>\t\tRun the benchmark for a specified amount of times.\n", ArgumentRuns);
     printf("\t%s <%s / %s / %s / %s / %s / %s / %s / %s / %s / %s>\n\t\t\t\tRestrict SIMD functions to specific instruction set\n", ArgumentMaxSimd, ArgumentMaxSimdAVX512BW, ArgumentMaxSimdAVX512F, ArgumentMaxSimdAVX2, ArgumentMaxSimdAVX, ArgumentMaxSimdSSE42, ArgumentMaxSimdSSE41, ArgumentMaxSimdSSSE3, ArgumentMaxSimdSSE3, ArgumentMaxSimdSSE2, ArgumentMaxSimdNone);
+    printf("\t%s <%s / %s / %s>\n\t\t\t\tOnly execute a specified mode (can be passed more than once)\n", ArgumentMode, ArgumentModeEncQuant, ArgumentModeEncQuant32, ArgumentModeEncQuantStereo);
     
     return 1;
   }
@@ -186,6 +191,19 @@ int32_t main(int32_t argc, char **pArgv)
   size_t argIndex = 4;
   size_t argsRemaining = (size_t)argc - 4;
 
+  typedef uint32_t codec;
+
+  enum codec_ : codec
+  {
+    codec_None = 0,
+    codec_EncodeQuantize = 1 << 0,
+    codec_EncodeQuantizeReorder32 = 1 << 1,
+    codec_EncodeQuantizeFullReorderStereoInterleaved = 1 << 2,
+    codec_All = (codec)-1,
+  };
+  
+  codec selectedCodecs = codec_None;
+
   while (argsRemaining)
   {
     if (argsRemaining >= 2 && strncmp(pArgv[argIndex], ArgumentQuality, sizeof(ArgumentQuality)) == 0)
@@ -238,6 +256,29 @@ int32_t main(int32_t argc, char **pArgv)
       pthread_t current_thread = pthread_self();
       pthread_setaffinity_np(current_thread, sizeof(cpu_set_t), &cpuset);
 #endif
+    }
+    else if (argsRemaining >= 2 && strncmp(pArgv[argIndex], ArgumentMode, sizeof(ArgumentMode)) == 0)
+    {
+      if (strncmp(pArgv[argIndex + 1], ArgumentModeEncQuant, sizeof(ArgumentModeEncQuant)) == 0)
+      {
+        selectedCodecs |= codec_EncodeQuantize;
+      }
+      else if (strncmp(pArgv[argIndex + 1], ArgumentModeEncQuant32, sizeof(ArgumentModeEncQuant32)) == 0)
+      {
+        selectedCodecs |= codec_EncodeQuantizeReorder32;
+      }
+      else if (strncmp(pArgv[argIndex + 1], ArgumentModeEncQuantStereo, sizeof(ArgumentModeEncQuantStereo)) == 0)
+      {
+        selectedCodecs |= codec_EncodeQuantizeFullReorderStereoInterleaved;
+      }
+      else
+      {
+        printf("Invalid or Unsupported Mode '%s'. Aborting.\n ", pArgv[argIndex + 1]);
+        return 1;
+      }
+
+      argIndex += 2;
+      argsRemaining -= 2;
     }
     else if (argsRemaining >= 2 && strncmp(pArgv[argIndex], ArgumentMaxSimd, sizeof(ArgumentMaxSimd)) == 0)
     {
@@ -402,6 +443,9 @@ int32_t main(int32_t argc, char **pArgv)
     }
   }
 
+  if (selectedCodecs == codec_None)
+    selectedCodecs = codec_All;
+
   _DetectCPUFeatures();
 
   // Print info. 
@@ -459,98 +503,73 @@ int32_t main(int32_t argc, char **pArgv)
 
     puts("\n");
   }
-
-  //// EncodeQuantizeReorderStereo.
-  //{
-  //  for (size_t run = 0; run < _RunCount; run++)
-  //  {
-  //    const uint64_t startTick = GetCurrentTimeTicks();
-  //    const uint64_t startClock = __rdtsc();
-  //    const simdDctResult result = simdDCT_EncodeQuantizeReorderStereoBuffer(pInData, pOutData, quantizeBase, sizeX, sizeY, 0, sizeY);
-  //    const uint64_t endClock = __rdtsc();
-  //    const uint64_t endTick = GetCurrentTimeTicks();
-  //
-  //    _mm_mfence();
-  //
-  //    _NsPerRun[run] = TicksToNs(endTick - startTick);
-  //    _ClocksPerRun[run] = endClock - startClock;
-  //
-  //    printf("\r%3" PRIu64 ": %6.3f clocks/byte, %5.2f MiB/s", run + 1, (endClock - startClock) / (double)fileSize, (fileSize / (1024.0 * 1024.0)) / (TicksToNs(endTick - startTick) * 1e-9));
-  //
-  //    if (_FAILED(result))
-  //    {
-  //      printf("Encode failed with error code 0x%" PRIX64 ". Aborting.\n", (uint64_t)result);
-  //      return 1;
-  //    }
-  //  }
-  //
-  //  printf("\r%-30s ", "EncQuantReordStereo");
-  //  print_perf_info(fileSize);
-  //}
-  //
-  //// EncodeQuantize.
-  //{
-  //  for (size_t run = 0; run < _RunCount; run++)
-  //  {
-  //    const uint64_t startTick = GetCurrentTimeTicks();
-  //    const uint64_t startClock = __rdtsc();
-  //    const simdDctResult result = simdDCT_EncodeQuantizeBuffer(pInData, pOutData, quantizeBase, sizeX, sizeY, 0, sizeY);
-  //    const uint64_t endClock = __rdtsc();
-  //    const uint64_t endTick = GetCurrentTimeTicks();
-  //
-  //    _mm_mfence();
-  //
-  //    _NsPerRun[run] = TicksToNs(endTick - startTick);
-  //    _ClocksPerRun[run] = endClock - startClock;
-  //
-  //    printf("\r%3" PRIu64 ": %6.3f clocks/byte, %5.2f MiB/s", run + 1, (endClock - startClock) / (double)fileSize, (fileSize / (1024.0 * 1024.0)) / (TicksToNs(endTick - startTick) * 1e-9));
-  //
-  //    if (_FAILED(result))
-  //    {
-  //      printf("Encode failed with error code 0x%" PRIX64 ". Aborting.\n", (uint64_t)result);
-  //      return 1;
-  //    }
-  //  }
-  //
-  //  printf("\r%-30s ", "Encode Quantize");
-  //  print_perf_info(fileSize);
-  //}
-  //
-  //// EncodeQuantize32Reorder.
-  //{
-  //  for (size_t run = 0; run < _RunCount; run++)
-  //  {
-  //    const uint64_t startTick = GetCurrentTimeTicks();
-  //    const uint64_t startClock = __rdtsc();
-  //    const simdDctResult result = simdDCT_EncodeQuantize32ReorderBuffer(pInData, pOutData, quantizeBase, sizeX, sizeY, 0, sizeY);
-  //    const uint64_t endClock = __rdtsc();
-  //    const uint64_t endTick = GetCurrentTimeTicks();
-  //
-  //    _mm_mfence();
-  //
-  //    _NsPerRun[run] = TicksToNs(endTick - startTick);
-  //    _ClocksPerRun[run] = endClock - startClock;
-  //
-  //    printf("\r%3" PRIu64 ": %6.3f clocks/byte, %5.2f MiB/s", run + 1, (endClock - startClock) / (double)fileSize, (fileSize / (1024.0 * 1024.0)) / (TicksToNs(endTick - startTick) * 1e-9));
-  //
-  //    if (_FAILED(result))
-  //    {
-  //      printf("Encode failed with error code 0x%" PRIX64 ". Aborting.\n", (uint64_t)result);
-  //      return 1;
-  //    }
-  //  }
-  //
-  //  printf("\r%-30s ", "Encode Quantize 32 Reorder");
-  //  print_perf_info(fileSize);
-  //}
-
-  // EncodeQuantize64Reorder.
+  
+  // EncodeQuantize.
+  if (!!(selectedCodecs & codec_EncodeQuantize))
   {
     for (size_t run = 0; run < _RunCount; run++)
     {
       const uint64_t startTick = GetCurrentTimeTicks();
       const uint64_t startClock = __rdtsc();
-      const simdDctResult result = simdDCT_EncodeQuantize64ReorderBuffer(pInData, pOutData, quantizeBase, sizeX, sizeY, 0, sizeY);
+      const simdDctResult result = simdDCT_EncodeQuantizeBuffer(pInData, pOutData, quantizeBase, sizeX, sizeY, 0, sizeY);
+      const uint64_t endClock = __rdtsc();
+      const uint64_t endTick = GetCurrentTimeTicks();
+  
+      _mm_mfence();
+  
+      _NsPerRun[run] = TicksToNs(endTick - startTick);
+      _ClocksPerRun[run] = endClock - startClock;
+  
+      printf("\r%3" PRIu64 ": %6.3f clocks/byte, %5.2f MiB/s", run + 1, (endClock - startClock) / (double)fileSize, (fileSize / (1024.0 * 1024.0)) / (TicksToNs(endTick - startTick) * 1e-9));
+  
+      if (_FAILED(result))
+      {
+        printf("Encode failed with error code 0x%" PRIX64 ". Aborting.\n", (uint64_t)result);
+        return 1;
+      }
+    }
+  
+    printf("\r%-30s ", "Encode Quantize");
+    print_perf_info(fileSize);
+  }
+  
+  // EncodeQuantize32Reorder.
+  if (!!(selectedCodecs & codec_EncodeQuantizeReorder32))
+  {
+    for (size_t run = 0; run < _RunCount; run++)
+    {
+      const uint64_t startTick = GetCurrentTimeTicks();
+      const uint64_t startClock = __rdtsc();
+      const simdDctResult result = simdDCT_EncodeQuantize32ReorderBuffer(pInData, pOutData, quantizeBase, sizeX, sizeY, 0, sizeY);
+      const uint64_t endClock = __rdtsc();
+      const uint64_t endTick = GetCurrentTimeTicks();
+  
+      _mm_mfence();
+  
+      _NsPerRun[run] = TicksToNs(endTick - startTick);
+      _ClocksPerRun[run] = endClock - startClock;
+  
+      printf("\r%3" PRIu64 ": %6.3f clocks/byte, %5.2f MiB/s", run + 1, (endClock - startClock) / (double)fileSize, (fileSize / (1024.0 * 1024.0)) / (TicksToNs(endTick - startTick) * 1e-9));
+  
+      if (_FAILED(result))
+      {
+        printf("Encode failed with error code 0x%" PRIX64 ". Aborting.\n", (uint64_t)result);
+        return 1;
+      }
+    }
+  
+    printf("\r%-30s ", "Encode Quantize 32 Reorder");
+    print_perf_info(fileSize);
+  }
+
+  // EncodeQuantizeReorderStereo.
+  if (!!(selectedCodecs & codec_EncodeQuantizeFullReorderStereoInterleaved))
+  {
+    for (size_t run = 0; run < _RunCount; run++)
+    {
+      const uint64_t startTick = GetCurrentTimeTicks();
+      const uint64_t startClock = __rdtsc();
+      const simdDctResult result = simdDCT_EncodeQuantizeReorderStereoBuffer(pInData, pOutData, quantizeBase, sizeX, sizeY, 0, sizeY);
       const uint64_t endClock = __rdtsc();
       const uint64_t endTick = GetCurrentTimeTicks();
 
@@ -568,7 +587,7 @@ int32_t main(int32_t argc, char **pArgv)
       }
     }
 
-    printf("\r%-30s ", "Encode Quantize 32 Reorder");
+    printf("\r%-30s ", "EncQuantReordStereo");
     print_perf_info(fileSize);
   }
 
