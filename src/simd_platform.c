@@ -97,9 +97,9 @@ void _DetectCPUFeatures()
       _CpuFamily += _CpuExtFamily;
 
     const bool osUsesXSAVE_XRSTORE = (cpuInfo[2] & (1 << 27)) != 0;
-    const bool cpuAVXSuport = (cpuInfo[2] & (1 << 28)) != 0;
+    const bool cpuAVXSupport = (cpuInfo[2] & (1 << 28)) != 0;
 
-    if (osUsesXSAVE_XRSTORE && cpuAVXSuport)
+    if (osUsesXSAVE_XRSTORE && cpuAVXSupport)
     {
       uint64_t xcrFeatureMask = _xgetbv(_XCR_XFEATURE_ENABLED_MASK);
       avxSupported = (xcrFeatureMask & 0x6) != 0;
